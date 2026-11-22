@@ -197,7 +197,7 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
               <div class="seg" id="inMediaKey"></div>
               <div class="field"><span class="lbl">Hauteur <output id="oMH"></output></span><input type="range" id="inMH" min="0.3" max="8" step="0.05"></div>
               <div class="field"><span class="lbl">Position verticale <output id="oMY"></output></span><input type="range" id="inMY" min="-2" max="6" step="0.05"></div>
-              <p class="hint">Personne filmée ou photographiée et détourée, flammes ou fumée filmées sur fond noir. Remplace la silhouette 3D. Le fichier reste sur cet appareil : importez-le aussi dans le masque.</p>
+              <p class="hint">Personne filmée ou photographiée et détourée, flammes ou fumée filmées sur fond noir. Remplace la silhouette 3D. Elle est conservée sur cet appareil et envoyée automatiquement au masque relié.</p>
             </div>
             <div class="row"><button class="btn" id="bDup">Dupliquer</button><button class="btn" id="bHide">Masquer</button><button class="btn danger" id="bDel">Supprimer</button></div>
           </div>
@@ -208,6 +208,7 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
             <div class="field"><span class="lbl">Moment</span><div class="seg" id="inTime"></div></div>
             <div class="field"><span class="lbl">Tirage <output id="oDraft"></output></span><input type="range" id="inDraft" min="0" max="100"></div>
             <div class="field"><span class="lbl">Vent <output id="oWind"></output></span><input type="range" id="inWind" min="-100" max="100" step="5"></div>
+            <div class="field"><span class="lbl">Densité de la fumée (cet appareil)</span><div class="seg" id="inQ"></div></div>
           </div>
         </section>
         <section>
@@ -229,6 +230,15 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
       </div>
       <!-- PUPITRE -->
       <div class="view" id="view-pup" hidden>
+        <section>
+          <h2>Son</h2>
+          <div class="box">
+            <div class="row"><button class="btn primary" id="sndOn" style="flex:1">Activer le son sur cet appareil</button></div>
+            <div class="field"><span class="lbl">Volume <output id="oVol"></output></span><input type="range" id="inVol" min="0" max="100"></div>
+            <label class="check"><input type="checkbox" id="inCalls"> Appels automatiques des victimes</label>
+            <p class="hint">Crépitement et ronflement suivent l'intensité du feu, le souffle suit la fumée. Le son vient de la fenêtre concernée (casque ou écouteurs conseillés). Activez-le sur l'appareil qui diffuse : le casque ou l'écran du stagiaire.</p>
+          </div>
+        </section>
         <section>
           <h2>Conditions générales</h2>
           <div class="box">
@@ -254,6 +264,7 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
               <button data-a="pulse">Pulsations</button><button data-a="flash" class="hot">Embrasement</button>
               <button data-a="vic+">+ Victime</button><button data-a="vic-" class="sm">Victime évacuée</button>
               <button data-a="extinct" class="cool wide">Attaque / extinction (vapeur blanche)</button>
+              <button data-a="glass" class="sm">Bris de vitre</button><button data-a="call" class="sm">Appel au secours</button>
               <button data-a="vis" class="wide" id="pVis">Masquer</button>
             </div>
           </div>
@@ -275,6 +286,7 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
       <button class="tb ed" id="bLink">Relier tablette et masque</button>
       <span class="spacer"></span>
       <span class="linkpill" id="linkState">Non relié</span>
+      <button class="tb" id="bSound">Son coupé</button>
       <button class="tb" id="exitTrainee">Quitter la vue stagiaire</button>
     </div>
     <div id="armed" hidden><span id="armedTxt"></span><button class="btn" id="armedCancel">Annuler</button></div>
@@ -362,7 +374,7 @@ const idb = (() => {
     catch(e){ rej(e); }
   }));
   const tx = (mode, fn) => open().then(db => new Promise((res, rej) => { const t = db.transaction('kv', mode); const st = t.objectStore('kv'); const q = fn(st); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }));
-  return { get: k => tx('readonly', st => st.get(k)).catch(() => null), put: (k, v) => tx('readwrite', st => st.put(v, k)).then(() => true).catch(() => false) };
+  return { get: k => tx('readonly', st => st.get(k)).catch(() => null), put: (k, v) => tx('readwrite', st => st.put(v, k)).then(() => true).catch(() => false), del: k => tx('readwrite', st => st.delete(k)).catch(() => null) };
 })();
 async function storePhoto(){
   const ok = await idb.put('photo', {url:photoURL, stamp:photoStamp});
@@ -606,7 +618,7 @@ class Pool{
     this.pts = new THREE.Points(g, this.mat); this.pts.frustumCulled = false; this.pts.renderOrder = order;
     scene.add(this.pts);
   }
-  add(p){ if(this.L.length < this.max){ this.L.push(p); return true; } return false; }
+  add(p){ if(this.L.length < Math.min(this.max, this.cap || this.max)){ this.L.push(p); return true; } return false; }
   flush(sort){
     const L = this.L;
     if(sort){
@@ -626,7 +638,12 @@ class Pool{
   }
 }
 const camWorld = new THREE.Vector3(), camDir = new THREE.Vector3();
-const SMOKE = new Pool(4200, TEX.smoke, false, 5);
+const SMOKE = new Pool(13000, TEX.smoke, false, 5);
+/* densité de fumée : plus de particules, chacune plus transparente, pour un volume plus continu */
+const QUALITY = {auto:'Auto', leger:'Allégée (Quest 3)', standard:'Standard', haute:'Haute'};
+const QP = {leger:{rate:1, cap:3800, alpha:1}, standard:{rate:1.9, cap:7500, alpha:0.8}, haute:{rate:3, cap:13000, alpha:0.66}};
+let qualityPref = 'auto'; try{ qualityPref = localStorage.getItem('feu-facade-ra.q') || 'auto'; }catch(e){}
+const Q = () => QP[qualityPref !== 'auto' ? qualityPref : (renderer.xr.isPresenting ? 'leger' : 'haute')];
 const FIRE = new Pool(3200, TEX.fire, true, 6);
 
 /* -- photo -- */
@@ -811,11 +828,14 @@ void main(){
   gl_FragColor = vec4(c.rgb * shade * a, a);
 }`;
 const mediaGeo = new THREE.PlaneGeometry(1,1).translate(0, 0.5, 0); mediaGeo.userData.shared = true;
-function setMedia(m, file){
+function setMedia(m, file, opts={}){
+  const {persist=true, send=true} = opts;
+  if(persist){ if(file) idb.put('media:'+m.id, {blob:file, name:file.name||'séquence', type:file.type}); else idb.del('media:'+m.id); }
+  if(send) sendMedia(m.id, file);
   const old = MEDIA.get(m.id); if(old){ old.tex.dispose(); if(old.el && old.el.pause) old.el.pause(); if(old.url) URL.revokeObjectURL(old.url); MEDIA.delete(m.id); }
   if(!file){ applyMedia(m); return; }
   const url = URL.createObjectURL(file);
-  const done = (el, tex, aspect) => { tex.colorSpace = THREE.NoColorSpace; MEDIA.set(m.id, {tex, el, aspect, url, name:file.name}); applyMedia(m); renderAll(); };
+  const done = (el, tex, aspect) => { tex.colorSpace = THREE.NoColorSpace; MEDIA.set(m.id, {tex, el, aspect, url, name:file.name||'séquence', blob:file}); applyMedia(m); renderAll(); };
   if(file.type.startsWith('video')){
     const v = document.createElement('video'); v.src = url; v.muted = true; v.loop = true; v.playsInline = true; v.crossOrigin = 'anonymous';
     v.onloadeddata = () => { v.play().catch(()=>{}); done(v, new THREE.VideoTexture(v), v.videoWidth/v.videoHeight || 1); };
@@ -903,10 +923,11 @@ function emitModule(m, R, dt, t){
   }
   // fumée
   if(S > 0.5){
-    const rate = (S/100) * 44 * wScale * draft * pm * (m.p.exit==='fuites' && fenetre ? 0.75 : 1) * (big ? 1.5 : 1);
+    const q = Q(); SMOKE.cap = q.cap;
+    const rate = q.rate * (S/100) * 44 * wScale * draft * pm * (m.p.exit==='fuites' && fenetre ? 0.75 : 1) * (big ? 1.5 : 1);
     R.acc.sm += rate * dt;
     while(R.acc.sm >= 1){ R.acc.sm--;
-      const base = {life:7+rnd()*4.5, a0:a0*(0.8+rnd()*0.4), c0, c1, glow: glowAmt*(0.7+rnd()*0.5), top:h/2, kind:'smoke', r:(rnd()-.5)*0.8, vr:(rnd()-.5)*0.25, buoy:(0.75 + Dn*0.6)*k*draft};
+      const base = {life:7+rnd()*4.5, a0:a0*q.alpha*(0.8+rnd()*0.4), c0, c1, glow: glowAmt*(0.7+rnd()*0.5), top:h/2, kind:'smoke', r:(rnd()-.5)*0.8, vr:(rnd()-.5)*0.25, buoy:(0.75 + Dn*0.6)*k*draft};
       if(big){
         spawn(SMOKE, R, (rnd()-.5)*w*0.95, h/2 - 0.1*k, -0.5*k - rnd()*3*k, (rnd()-.5)*0.3, (0.9+rnd()*0.9)*k*draft, (rnd()-.3)*0.4*k,
           {...base, s0:(0.9+rnd()*0.6)*k, s1:(5+rnd()*4)*k, life:9+rnd()*4});
@@ -997,7 +1018,9 @@ function stepModule(m, R, dt, t){
   R.cur.smoke = ease(R.cur.smoke, m.p.smoke, 2.6);
   R.cur.dark = ease(R.cur.dark, m.p.dark, 3.2);
   R.cur.pulse = ease(R.cur.pulse, m.p.pulse, 1.5);
+  const prevF = R.cur.fire;
   R.cur.fire = ease(R.cur.fire, m.p.fire, m.p.fire > R.cur.fire ? 2.2 : 3.5);
+  if(prevF < 27 && R.cur.fire >= 27 && m.visible && T > 6) playFx('glass', m.id);   // la vitre cède quand les flammes sortent
   R.cur.vis = ease(R.cur.vis, m.visible ? 1 : 0, 1.2);
   const A = AMB[cfg.global.time] || AMB.jour;
   const vis = R.cur.vis, F = R.cur.fire*vis;
@@ -1313,6 +1336,7 @@ function renderInspector(){
   // ambiance
   const G = cfg.global;
   segs($('#inTime'), TIMES, G.time, k => { G.time = k; changed(); });
+  segs($('#inQ'), QUALITY, qualityPref, k => { qualityPref = k; try{ localStorage.setItem('feu-facade-ra.q', k); }catch(e){} renderInspector(); });
   if(document.activeElement !== $('#inDraft')) $('#inDraft').value = G.draft;
   if(document.activeElement !== $('#inWind')) $('#inWind').value = G.wind;
   $('#oDraft').textContent = G.draft<25 ? 'faible' : G.draft<60 ? 'normal' : G.draft<85 ? 'fort' : 'très fort';
@@ -1376,6 +1400,8 @@ document.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
     case 'vic+': p.victims = Math.min(3, p.victims + 1); m.visible = true; layout(m); break;
     case 'vic-': p.victims = Math.max(0, p.victims - 1); layout(m); break;
     case 'vis': m.visible = !m.visible; break;
+    case 'glass': playFx('glass', m.id); sendFx('glass', m.id); if(p.fill==='aucun') p.fill = 'sombre'; break;
+    case 'call': if(!p.victims) { toast('Ajoutez d\u2019abord une victime à cette vignette.'); return; } playFx('call', m.id); sendFx('call', m.id); return;
   }
   changed();
 });
@@ -1464,6 +1490,31 @@ addEventListener('keydown', e => {
 /* Synchronisation : même navigateur (onglets) + liaison entre appareils */
 /* ------------------------------------------------------------------ */
 let bc = null; try{ bc = new BroadcastChannel('feu-facade-ra'); }catch(e){}
+function sendFx(kind, id){
+  const msg = {t:'fx', from:CLIENT, kind, id};
+  try{ bc && bc.postMessage(msg); }catch(e){}
+  for(const c of conns){ try{ if(c.open) c.send(msg); }catch(e){} }
+}
+async function sendMedia(id, blob, only){
+  const m = cfg.modules.find(x => x.id===id); if(!m && blob) return;
+  const head = {t:'media', from:CLIENT, id, del:!blob, name:blob?.name || 'séquence', type:blob?.type || ''};
+  if(!only){ try{ bc && bc.postMessage({...head, blob: blob || null}); }catch(e){} }
+  const targets = only ? [only] : conns;
+  if(!targets.length) return;
+  const buf = blob ? await blob.arrayBuffer() : null;
+  for(const c of targets){ try{ if(c.open) c.send({...head, buf}); }catch(e){} }
+}
+function sendAllMedia(only){ for(const [id, md] of MEDIA) if(md.blob) sendMedia(id, md.blob, only); }
+function receiveMedia(d){
+  const m = cfg.modules.find(x => x.id===d.id); if(!m) return;
+  if(d.del){ setMedia(m, null, {send:false}); return; }
+  let blob = d.blob;
+  if(!blob && d.buf) blob = new Blob([d.buf], {type:d.type});
+  if(!blob) return;
+  try{ Object.defineProperty(blob, 'name', {value:d.name}); }catch(e){}
+  setMedia(m, blob, {send:false});
+  toast('Séquence reçue : ' + d.name);
+}
 let peer = null, conns = [], linkRole = null;
 let sendT = 0, lastSentPhoto = -1;
 function changed(rebuild=true){
@@ -1478,7 +1529,10 @@ function broadcast(){
   for(const c of conns){ try{ if(c.open){ c.send(payload(c._pv !== photoVer)); c._pv = photoVer; } }catch(e){} }
 }
 function receive(d){
-  if(!d || d.t!=='state' || d.from===CLIENT) return;
+  if(!d || d.from===CLIENT) return;
+  if(d.t==='fx'){ playFx(d.kind, d.id); return; }
+  if(d.t==='media'){ receiveMedia(d); return; }
+  if(d.t!=='state') return;
   const incoming = normalize(d.cfg);
   // en réalité augmentée, on garde les positions posées dans ce masque
   if(xrActive) for(const m of incoming.modules){ const local = cfg.modules.find(x=>x.id===m.id); if(local && local.xr) m.xr = local.xr; }
@@ -1490,7 +1544,7 @@ function receive(d){
 if(bc){
   bc.onmessage = e => receive(e.data);
   bc.postMessage({t:'hello', from:CLIENT});
-  bc.addEventListener('message', e => { if(e.data && e.data.t==='hello' && !trainee){ lastSentPhoto = -1; broadcast(); } });
+  bc.addEventListener('message', e => { if(e.data && e.data.t==='hello' && !trainee){ lastSentPhoto = -1; broadcast(); sendAllMedia(); } });
 }
 function setLink(txt, ok){ const el = $('#linkState'); el.textContent = txt; el.classList.toggle('ok', !!ok); }
 function loadPeer(){
@@ -1501,7 +1555,7 @@ function loadPeer(){
   });
 }
 function wireConn(c){
-  c.on('open', () => { conns.push(c); c._pv = -1; setLink(linkRole==='host' ? `Relié · ${conns.length} appareil${conns.length>1?'s':''}` : 'Relié à l’opérateur', true); if(linkRole==='host'){ c.send(payload(true)); c._pv = photoVer; } $('#lMsg').textContent = 'Liaison établie.'; });
+  c.on('open', () => { conns.push(c); c._pv = -1; setLink(linkRole==='host' ? `Relié · ${conns.length} appareil${conns.length>1?'s':''}` : 'Relié à l’opérateur', true); if(linkRole==='host'){ c.send(payload(true)); c._pv = photoVer; sendAllMedia(c); } $('#lMsg').textContent = 'Liaison établie.'; });
   c.on('data', d => receive(d));
   c.on('close', () => { conns = conns.filter(x => x!==c); setLink(conns.length ? `Relié · ${conns.length}` : 'Liaison perdue', conns.length>0); });
 }
@@ -1629,6 +1683,109 @@ $('#bXR').onclick = startXR;
 })();
 
 /* ------------------------------------------------------------------ */
+/* Son : synthèse en temps réel, spatialisé par fenêtre                */
+/* ------------------------------------------------------------------ */
+const AU = {ctx:null, master:null, on:false, vol:0.8, calls:true, noise:null, crackle:null, nodes:new Map()};
+try{ const a = JSON.parse(localStorage.getItem('feu-facade-ra.audio')||'{}'); if(a.vol!=null) AU.vol = a.vol; if(a.calls!=null) AU.calls = a.calls; }catch(e){}
+const saveAudio = () => { try{ localStorage.setItem('feu-facade-ra.audio', JSON.stringify({vol:AU.vol, calls:AU.calls})); }catch(e){} };
+function makeBuffers(ctx){
+  const sr = ctx.sampleRate;
+  const n = ctx.createBuffer(1, sr*3, sr), d = n.getChannelData(0);
+  let b0=0,b1=0,b2=0;
+  for(let i=0;i<d.length;i++){ const w = Math.random()*2-1; b0 = 0.99765*b0 + w*0.099; b1 = 0.963*b1 + w*0.2965; b2 = 0.57*b2 + w*1.0527; d[i] = (b0+b1+b2+w*0.1848)*0.2; }  // bruit rose
+  const c = ctx.createBuffer(1, sr*6, sr), e = c.getChannelData(0);
+  for(let k=0;k<420;k++){                                   // crépitements : petites détonations sèches
+    const t0 = Math.floor(Math.random()*(e.length-sr*0.05)), len = Math.floor(sr*(0.002+Math.random()*0.03)), amp = Math.pow(Math.random(), 2.2);
+    for(let i=0;i<len;i++) e[t0+i] += (Math.random()*2-1) * amp * Math.exp(-i/(len*0.25));
+  }
+  return {noise:n, crackle:c};
+}
+function audioStart(){
+  if(AU.ctx){ AU.ctx.resume(); AU.on = true; return; }
+  const Ctx = window.AudioContext || window.webkitAudioContext; if(!Ctx){ toast('Le son n\u2019est pas disponible sur cet appareil.'); return; }
+  const ctx = AU.ctx = new Ctx();
+  AU.master = ctx.createGain(); AU.master.gain.value = AU.vol; AU.master.connect(ctx.destination);
+  Object.assign(AU, makeBuffers(ctx)); AU.on = true;
+  try{ speechSynthesis.getVoices(); }catch(e){}
+}
+function audioStop(){ AU.on = false; if(AU.ctx) AU.ctx.suspend(); try{ speechSynthesis.cancel(); }catch(e){} }
+function loopSrc(buf, rate){ const s = AU.ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.playbackRate.value = rate; s.loopStart = Math.random()*2; s.start(0, Math.random()*2); return s; }
+function moduleAudio(m, R){
+  let N = AU.nodes.get(m.id); if(N) return N;
+  const ctx = AU.ctx;
+  const pan = ctx.createPanner(); pan.panningModel = 'HRTF'; pan.distanceModel = 'inverse'; pan.refDistance = 9; pan.rolloffFactor = 1; pan.connect(AU.master);
+  const roarF = ctx.createBiquadFilter(); roarF.type = 'lowpass'; roarF.frequency.value = 320; roarF.Q.value = 0.8;
+  const roarG = ctx.createGain(); roarG.gain.value = 0; loopSrc(AU.noise, 0.6).connect(roarF).connect(roarG).connect(pan);
+  const crF = ctx.createBiquadFilter(); crF.type = 'highpass'; crF.frequency.value = 900;
+  const crG = ctx.createGain(); crG.gain.value = 0;
+  loopSrc(AU.crackle, 0.9+Math.random()*0.2).connect(crF); loopSrc(AU.crackle, 0.62).connect(crF); crF.connect(crG).connect(pan);
+  const hsF = ctx.createBiquadFilter(); hsF.type = 'bandpass'; hsF.frequency.value = 1400; hsF.Q.value = 0.5;
+  const hsG = ctx.createGain(); hsG.gain.value = 0; loopSrc(AU.noise, 1.0).connect(hsF).connect(hsG).connect(pan);
+  N = {pan, roarG, crG, hsG, nextCall: AU.ctx.currentTime + 3 + Math.random()*6};
+  AU.nodes.set(m.id, N); return N;
+}
+function audioFrame(t){
+  if(!AU.on || !AU.ctx) return;
+  const ctx = AU.ctx, now = ctx.currentTime, L = ctx.listener;
+  if(L.positionX){ L.positionX.value = camWorld.x; L.positionY.value = camWorld.y; L.positionZ.value = camWorld.z; L.forwardX.value = camDir.x; L.forwardY.value = camDir.y; L.forwardZ.value = camDir.z; L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0; }
+  else { L.setPosition(camWorld.x, camWorld.y, camWorld.z); L.setOrientation(camDir.x, camDir.y, camDir.z, 0, 1, 0); }
+  for(const m of cfg.modules){
+    const R = RT.get(m.id); if(!R) continue;
+    const N = moduleAudio(m, R);
+    const p = N.pan; if(p.positionX){ p.positionX.value = R.o.x; p.positionY.value = R.o.y; p.positionZ.value = R.o.z + 0.3; } else p.setPosition(R.o.x, R.o.y, R.o.z+0.3);
+    const vis = R.placed ? R.cur.vis : 0, F = R.cur.fire*vis/100, S = R.cur.smoke*vis/100;
+    const draft = 0.5 + cfg.global.draft/100;
+    const roar = F > 0.25 ? Math.pow((F-0.2)/0.8, 1.2) * 0.9 * draft : F*0.12;
+    N.roarG.gain.setTargetAtTime(roar, now, 0.4);
+    N.crG.gain.setTargetAtTime(F > 0 ? (0.25 + F*1.1) : 0, now, 0.3);
+    const pm = 1 + (R.cur.pulse/100)*(2.4*Math.pow(Math.max(0, Math.sin(t*2.3 + R.ph)), 3) - 0.75);
+    N.hsG.gain.setTargetAtTime(S * 0.07 * pm * (m.p.exit==='fuites' ? 0.5 : 1), now, 0.15);
+    if(AU.calls && m.p.victims > 0 && vis > 0.5 && now > N.nextCall){ playFx('call', m.id); N.nextCall = now + 5 + Math.random()*8; }
+  }
+  for(const id of [...AU.nodes.keys()]) if(!RT.has(id)){ const N = AU.nodes.get(id); N.pan.disconnect(); AU.nodes.delete(id); }
+}
+const CALLS = ['Au secours !', 'À l\u2019aide !', 'Aidez-moi !', 'Au secours, on est coincés !', 'Vite, ici !', 'Je ne peux pas sortir !', 'Il y a de la fumée partout !'];
+function playFx(kind, id){
+  if(!AU.on || !AU.ctx) return;
+  const m = cfg.modules.find(x => x.id===id); const R = m && RT.get(id); if(!R) return;
+  const ctx = AU.ctx, N = moduleAudio(m, R), t0 = ctx.currentTime;
+  if(kind==='glass'){
+    const burst = ctx.createBufferSource(); burst.buffer = AU.noise; burst.playbackRate.value = 2.5;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
+    const g = ctx.createGain(); g.gain.setValueAtTime(1.4, t0); g.gain.exponentialRampToValueAtTime(0.001, t0+0.35);
+    burst.connect(hp).connect(g).connect(N.pan); burst.start(t0); burst.stop(t0+0.4);
+    for(let i=0;i<14;i++){                                   // éclats qui tintent en retombant
+      const o = ctx.createOscillator(), og = ctx.createGain(), ts = t0 + Math.random()*0.9 + (i<4?0:0.15);
+      o.type = 'sine'; o.frequency.value = 2500 + Math.random()*5500;
+      og.gain.setValueAtTime(0, ts); og.gain.linearRampToValueAtTime(0.12 + Math.random()*0.2, ts+0.003); og.gain.exponentialRampToValueAtTime(0.0005, ts + 0.12 + Math.random()*0.5);
+      o.connect(og).connect(N.pan); o.start(ts); o.stop(ts+0.8);
+    }
+  } else if(kind==='call'){
+    try{
+      const u = new SpeechSynthesisUtterance(CALLS[Math.floor(Math.random()*CALLS.length)]);
+      const v = speechSynthesis.getVoices().filter(x => /^fr/i.test(x.lang));
+      if(v.length) u.voice = v[Math.floor(Math.random()*v.length)];
+      u.lang = 'fr-FR'; u.rate = 1.05 + Math.random()*0.25; u.pitch = 0.9 + Math.random()*0.7;
+      const dist = camWorld.distanceTo(R.o); u.volume = clamp(AU.vol * 12/Math.max(6, dist), 0.15, 1);
+      speechSynthesis.speak(u);
+    }catch(e){}
+  }
+}
+function renderSound(){
+  const on = AU.on;
+  $('#sndOn').textContent = on ? 'Couper le son sur cet appareil' : 'Activer le son sur cet appareil';
+  $('#sndOn').classList.toggle('primary', !on);
+  $('#bSound').textContent = on ? 'Son activé' : 'Son coupé'; $('#bSound').classList.toggle('on', on);
+  $('#inVol').value = Math.round(AU.vol*100); $('#oVol').textContent = Math.round(AU.vol*100) + ' %';
+  $('#inCalls').checked = AU.calls;
+}
+const toggleSound = () => { AU.on ? audioStop() : audioStart(); renderSound(); };
+$('#sndOn').onclick = toggleSound; $('#bSound').onclick = toggleSound;
+$('#inVol').oninput = e => { AU.vol = +e.target.value/100; if(AU.master) AU.master.gain.value = AU.vol; saveAudio(); renderSound(); };
+$('#inCalls').onchange = e => { AU.calls = e.target.checked; saveAudio(); };
+renderSound();
+
+/* ------------------------------------------------------------------ */
 /* Boucle                                                              */
 /* ------------------------------------------------------------------ */
 const clock = new THREE.Clock();
@@ -1647,6 +1804,7 @@ renderer.setAnimationLoop(() => {
     SMOKE.mat.uniforms.uHalfH.value = FIRE.mat.uniforms.uHalfH.value = hh;
   }
   updateParticles(dt, T);
+  audioFrame(T);
   renderer.render(scene, camera);
 });
 
@@ -1658,6 +1816,7 @@ cfg = normalize(cfg);
 buildPalette();
 setPhoto(photoURL, photoStamp, false);
 restorePhoto();
+(async () => { for(const m of cfg.modules){ const v = await idb.get('media:'+m.id); if(v && v.blob){ const b = v.blob; try{ Object.defineProperty(b, 'name', {value:v.name}); }catch(e){} setMedia(m, b, {persist:false, send:false}); } } })();
 applyAmbience();
 layoutAll();
 // préchauffage : la fumée est déjà installée à l'ouverture

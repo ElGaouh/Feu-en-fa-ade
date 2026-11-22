@@ -207,8 +207,9 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
           <h2>Bâtiment</h2>
           <div class="box">
             <p class="hint">Prenez le bâtiment en photo de face, depuis l'endroit où se tiendra le stagiaire. La photo reste sur cet appareil.</p>
-            <div class="row"><label class="btn primary" for="photoIn" style="display:inline-block">Prendre ou importer une photo</label><button class="btn" id="bSample">Photo d'exemple</button></div>
-            <input type="file" id="photoIn" accept="image/*" capture="environment" hidden>
+            <div class="row"><label class="btn primary" for="photoIn" style="display:inline-block">Choisir une photo</label><label class="btn" for="camIn" style="display:inline-block">Prendre une photo</label><button class="btn" id="bSample">Photo d'exemple</button></div>
+            <input type="file" id="photoIn" accept="image/*" hidden>
+            <input type="file" id="camIn" accept="image/*" capture="environment" hidden>
           </div>
         </section>
         <section>
@@ -1300,7 +1301,7 @@ document.querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
 });
 
 // photo
-$('#photoIn').onchange = e => {
+$('#photoIn').onchange = $('#camIn').onchange = e => {
   const f = e.target.files[0]; if(!f) return;
   const img = new Image(); const url = URL.createObjectURL(f);
   img.onload = () => {

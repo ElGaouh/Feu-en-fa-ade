@@ -215,7 +215,7 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
           <h2>Bâtiment</h2>
           <div class="box">
             <p class="hint">Prenez le bâtiment en photo de face, depuis l'endroit où se tiendra le stagiaire. La photo reste sur cet appareil.</p>
-            <div class="row"><label class="btn primary" for="photoIn" style="display:inline-block">Choisir une photo</label><label class="btn" for="camIn" style="display:inline-block">Prendre une photo</label><button class="btn" id="bSample">Photo d'exemple</button></div>
+            <div class="row"><label class="btn primary" for="photoIn" style="display:inline-block">Choisir une photo</label><label class="btn" for="camIn" style="display:inline-block">Prendre une photo</label><button class="btn" id="bLive">Caméra en direct</button><button class="btn" id="bSample">Photo d'exemple</button></div>
             <input type="file" id="photoIn" accept="image/*" hidden>
             <input type="file" id="camIn" accept="image/*" capture="environment" hidden>
           </div>
@@ -283,6 +283,8 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
     <div class="topbar">
       <button class="tb ed" id="bTrainee">Vue stagiaire</button>
       <button class="tb ed" id="bXR">Réalité augmentée</button>
+      <button class="tb ed" id="bLiveTop">Caméra en direct</button>
+      <button class="tb ed" id="bFreeze" hidden>Figer l'image</button>
       <button class="tb ed" id="bLink">Relier tablette et masque</button>
       <span class="spacer"></span>
       <span class="linkpill" id="linkState">Non relié</span>
@@ -652,6 +654,7 @@ const photoMesh = new THREE.Mesh(new THREE.PlaneGeometry(1,1), photoMat);
 photoMesh.renderOrder = -10; scene.add(photoMesh);
 let photoAspect = 1.6;
 function setPhoto(url, stamp, persist=true){
+  if(live) stopLive(false);
   photoURL = url; photoVer++;
   if(stamp !== undefined) photoStamp = stamp;
   if(persist) storePhoto();
@@ -665,6 +668,41 @@ function setPhoto(url, stamp, persist=true){
   const img = new Image();
   img.onload = () => { const t = new THREE.Texture(img); t.needsUpdate = true; apply(t, img.width/img.height); };
   img.src = url;
+}
+
+/* -- caméra en direct : le flux de la tablette remplace la photo (sans suivi de mouvement : tablette tenue fixe ou sur pied) -- */
+let live = null;
+async function startLive(){
+  if(!navigator.mediaDevices?.getUserMedia){ toast('La caméra n\u2019est pas accessible ici. Utilisez l\u2019adresse en ligne de l\u2019appli.'); return; }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}}, audio:false});
+    const v = document.createElement('video'); v.srcObject = stream; v.muted = true; v.playsInline = true; await v.play();
+    const tex = new THREE.VideoTexture(v); tex.colorSpace = THREE.SRGBColorSpace;
+    live = {stream, v, tex, prev: photoMat.map};
+    photoMat.map = tex; photoMat.needsUpdate = true;
+    const aspect = (v.videoWidth || 16) / (v.videoHeight || 9);
+    photoAspect = aspect; PW = PH*aspect; photoMesh.scale.set(PW, PH, 1);
+    resize(); layoutAll(); renderLive();
+    toast('Caméra en direct : gardez la tablette immobile (idéalement sur un pied), puis posez les vignettes.');
+  }catch(e){ toast('Accès à la caméra refusé ou impossible sur cet appareil.'); }
+}
+function stopLive(restore=true){
+  if(!live) return;
+  live.stream.getTracks().forEach(t => t.stop()); live.tex.dispose();
+  const prev = live.prev; live = null; renderLive();
+  if(restore){ setPhoto(photoURL, photoStamp, false); }
+  else if(prev) photoMat.map = prev;
+}
+function freezeLive(){
+  if(!live) return;
+  const v = live.v, cv = document.createElement('canvas'), sc = Math.min(1, 2048/Math.max(v.videoWidth, v.videoHeight));
+  cv.width = Math.round(v.videoWidth*sc); cv.height = Math.round(v.videoHeight*sc);
+  cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+  setPhoto(cv.toDataURL('image/jpeg', 0.88), Date.now()); changed(); toast('Image figée et enregistrée comme photo du bâtiment.');
+}
+function renderLive(){
+  for(const id of ['#bLive','#bLiveTop']){ const b = $(id); if(b){ b.textContent = live ? 'Quitter la caméra' : 'Caméra en direct'; b.classList.toggle('on', !!live); } }
+  const f = $('#bFreeze'); if(f) f.hidden = !live;
 }
 
 /* -- victimes -- */
@@ -1433,6 +1471,8 @@ $('#photoIn').onchange = $('#camIn').onchange = e => {
   img.src = url; e.target.value = '';
 };
 let smpArm = 0;
+$('#bLive').onclick = $('#bLiveTop').onclick = () => live ? stopLive() : startLive();
+$('#bFreeze').onclick = freezeLive;
 $('#bSample').onclick = e => {
   if(photoStamp > 0 && Date.now() - smpArm > 3000){ smpArm = Date.now(); e.target.textContent = 'Remplacer ma photo ?'; setTimeout(()=>e.target.textContent='Photo d\u2019exemple', 3000); return; }
   e.target.textContent = 'Photo d\u2019exemple'; setPhoto(null, Date.now()); changed();

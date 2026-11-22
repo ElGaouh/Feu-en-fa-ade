@@ -1762,7 +1762,7 @@ function xrToast(msg){ const t = $('#xrToast'); t.textContent = msg; t.classList
 function xrUIRender(){
   $('#xrDist').textContent = xrPlane ? `Façade à ${new V3().setFromMatrixPosition(xrCam().matrixWorld).distanceTo(xrPlane.p).toFixed(1)} m` : (xrHitDist != null ? `Façade détectée : ${xrHitDist.toFixed(1)} m` : `Façade : ${xrDistManual.toFixed(0)} m`);
   const unplaced = cfg.modules.filter(m => !m.xr).length;
-  $('#xrHint').textContent = xrAdj ? '' : (unplaced ? `Appui long sur une fenêtre pour poser une vignette (${unplaced} préparée${unplaced>1?'s':''} sur la tablette).` : 'Appui long sur une fenêtre : poser une vignette. Sur une vignette : la régler.');
+  $('#xrHint').textContent = xrAdj ? '' : (unplaced ? `Visez le mur : l\u2019anneau jaune montre qu\u2019il est détecté. Appui long pour poser une vignette (${unplaced} préparée${unplaced>1?'s':''} sur la tablette).` : 'Appui long sur une fenêtre : poser une vignette. Sur une vignette : la régler.');
   $('#xrHint').hidden = !!xrAdj || !!cal;
 }
 function moduleAt(x, y){
@@ -1777,12 +1777,18 @@ function moduleAt(x, y){
 }
 function xrPlaceAt(x, y, make){
   const {o, d} = touchRay(x, y);
+  if(!xrPlane && xrHit && performance.now() - xrHit.t < 700){
+    // surface réellement détectée sous la croix : on s'appuie dessus (mur = orientation exacte)
+    if(xrHit.wall) setPlane(xrHit.p, Math.atan2(xrHit.n.x, xrHit.n.z));
+    else { const camP = new V3().setFromMatrixPosition(xrCam().matrixWorld); const dd = camP.distanceTo(xrHit.p); const hz = new V3(d.x, 0, d.z).normalize(); setPlane(o.clone().addScaledVector(d, dd), Math.atan2(-hz.x, -hz.z)); }
+  }
   let p = xrPlane ? rayPlane(o, d, xrPlane) : null;
   let yaw;
   if(!p){
     p = o.clone().addScaledVector(d, xrDist());
     const hz = new V3(d.x, 0, d.z).normalize(); yaw = Math.atan2(-hz.x, -hz.z);
     setPlane(p, yaw);
+    xrToast('Aucune surface détectée : vignette posée à ' + xrDist().toFixed(0) + ' m. Faites « Caler la façade » pour la distance exacte.');
   } else yaw = xrPlane.yaw;
   const m = make();
   const [w, h] = MODE_SIZE[m.mode];
@@ -1910,15 +1916,26 @@ function xrDiagFrame(frame){
   if(!pose){ txt = 'Suivi : PERDU · visez une zone texturée et éclairée'; bad = true; }
   else if(pose.emulatedPosition){ txt = 'Suivi : rotation seule · bougez lentement, plus de lumière'; bad = true; }
   else txt = 'Suivi : OK';
-  txt += ' · détection ' + (xrHitSrc ? (xrHitDist != null ? 'active' : 'en attente') : 'indisponible');
+  txt += ' · surface ' + (!xrHitSrc ? 'indisponible' : xrHit ? (xrHit.wall ? 'mur détecté' : 'sol détecté') : 'non détectée');
   el.textContent = txt; el.classList.toggle('bad', bad);
 }
-let hitTick = 0;
+let hitTick = 0, xrHit = null;
+const reticle = new THREE.Mesh(new THREE.RingGeometry(0.07, 0.1, 32), new THREE.MeshBasicMaterial({color:0xf3b61f, depthTest:false, transparent:true, opacity:.9}));
+reticle.renderOrder = 30; reticle.visible = false; scene.add(reticle);
 function xrHitFrame(frame){
-  if(!xrHitSrc || !frame || xrPlane) return;
-  if(++hitTick % 10) return;
+  if(!xrHitSrc || !frame){ reticle.visible = false; return; }
+  if(++hitTick % 2) return;
   const ref = renderer.xr.getReferenceSpace(); const res = frame.getHitTestResults(xrHitSrc);
-  if(res.length){ const pose = res[0].getPose(ref); if(pose){ const t = pose.transform.position; const c = xrCam(); const o = new V3().setFromMatrixPosition(c.matrixWorld); const d = o.distanceTo(new V3(t.x, t.y, t.z)); if(d > 1.5){ xrHitDist = d; xrUIRender(); } } }
+  const pose = res.length ? res[0].getPose(ref) : null;
+  if(!pose){ reticle.visible = false; if(xrHit && performance.now() - xrHit.t > 800) xrHit = null; return; }
+  const mtx = new THREE.Matrix4().fromArray(pose.transform.matrix);
+  const p = new V3().setFromMatrixPosition(mtx), n = new V3().setFromMatrixColumn(mtx, 1).normalize();
+  const camP = new V3().setFromMatrixPosition(xrCam().matrixWorld);
+  if(n.dot(camP.clone().sub(p)) < 0) n.negate();
+  xrHit = {p, n, t:performance.now(), wall: Math.abs(n.y) < 0.6};
+  reticle.visible = true; reticle.position.copy(p).addScaledVector(n, 0.01); reticle.lookAt(p.clone().add(n));
+  const d = camP.distanceTo(p);
+  if(!xrPlane && d > 0.3 && Math.abs(d - (xrHitDist ?? -9)) > 0.05){ xrHitDist = d; if(hitTick % 10 === 0) xrUIRender(); }
 }
 
 async function startXR(){
@@ -1929,14 +1946,14 @@ async function startXR(){
     try{ session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['local-floor','dom-overlay','hit-test'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local-floor'); }
     catch(e){ session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['dom-overlay','hit-test'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local'); }
     await renderer.xr.setSession(session);
-    xrPlane = null; xrHitSrc = null;
+    xrPlane = null; xrHitSrc = null; xrHit = null; xrHitDist = null;
     if(session.domOverlayState){ xrui.hidden = false; xrUIRender(); }
     try{ const vs = await session.requestReferenceSpace('viewer'); xrHitSrc = await session.requestHitTestSource({space:vs}); }catch(e){ xrHitSrc = null; }
     xrActive = true; renderer.setClearColor(0x000000, 0); photoMesh.visible = false;
     if(!controllers.length) setupControllers();
     layoutAll(); xrHintUpdate(); renderAll();
     session.addEventListener('end', () => {
-      $('#xrui').hidden = true; xrCloseMenu(); cal = null; $('#xrCalBox').hidden = true; xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
+      reticle.visible = false; $('#xrui').hidden = true; xrCloseMenu(); cal = null; $('#xrCalBox').hidden = true; xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
       xrActive = false; carry = null; renderer.setClearColor(0x07090b, 1); photoMesh.visible = true;
       layoutAll(); resize(); renderAll();
     });

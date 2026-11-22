@@ -149,6 +149,8 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
 #xrctx .ch{font:600 13px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.08em;color:#aab4be;padding:6px 8px}
 #xrctx button{background:none;border:0;text-align:left;padding:11px 10px}
 #xrctx button.del{color:var(--danger)}
+.xr-diag{position:absolute;top:calc(64px + env(safe-area-inset-top,0px));left:10px;font:500 12px/1.3 var(--f-mono);background:rgba(20,24,29,.75);padding:5px 8px;border-radius:6px}
+.xr-diag.bad{background:rgba(160,30,25,.9)}
 .xr-cal{position:absolute;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom,0px));background:rgba(18,22,27,.94);border:1px solid var(--accent);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
 .xr-cal p{margin:0;text-align:center}
 .xr-top{flex-wrap:wrap}
@@ -325,6 +327,7 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
     <button id="xrCal">Caler la façade</button>
     <button id="xrExit">Quitter</button>
   </div>
+  <div class="xr-diag" id="xrDiag">Suivi : démarrage…</div>
   <div class="xr-hint" id="xrHint">Visez le bâtiment, puis faites un appui long sur une fenêtre pour y poser une vignette.</div>
   <div class="xr-cross" aria-hidden="true"></div>
   <div class="xr-cal" id="xrCalBox" hidden><p id="xrCalTxt"></p><div class="xr-adj-r"><button id="xrCalCancel">Annuler</button><button id="xrCalGo" class="ok">Visée 1</button></div></div>
@@ -726,7 +729,7 @@ async function startLive(){
     const aspect = (v.videoWidth || 16) / (v.videoHeight || 9);
     photoAspect = aspect; PW = PH*aspect; photoMesh.scale.set(PW, PH, 1);
     resize(); layoutAll(); renderLive();
-    toast('Caméra en direct : gardez la tablette immobile (idéalement sur un pied), puis posez les vignettes.');
+    toast('Caméra simple : les vignettes restent fixes à l\u2019écran et ne suivent pas vos mouvements. Pour qu\u2019elles restent sur le bâtiment, utilisez « Entrer en réalité augmentée ».');
   }catch(e){ toast('Accès à la caméra refusé ou impossible sur cet appareil.'); }
 }
 function stopLive(restore=true){
@@ -1898,6 +1901,18 @@ $('#xrCalGo').onclick = () => {
   xrToast(`Façade calée à ${a.o.distanceTo(res.p).toFixed(1)} m.`);
 };
 
+let diagTick = 0, lostSince = 0;
+function xrDiagFrame(frame){
+  if(!frame || ++diagTick % 15) return;
+  const pose = frame.getViewerPose(renderer.xr.getReferenceSpace());
+  const el = $('#xrDiag');
+  let txt, bad = false;
+  if(!pose){ txt = 'Suivi : PERDU · visez une zone texturée et éclairée'; bad = true; }
+  else if(pose.emulatedPosition){ txt = 'Suivi : rotation seule · bougez lentement, plus de lumière'; bad = true; }
+  else txt = 'Suivi : OK';
+  txt += ' · détection ' + (xrHitSrc ? (xrHitDist != null ? 'active' : 'en attente') : 'indisponible');
+  el.textContent = txt; el.classList.toggle('bad', bad);
+}
 let hitTick = 0;
 function xrHitFrame(frame){
   if(!xrHitSrc || !frame || xrPlane) return;
@@ -2046,7 +2061,7 @@ const clock = new THREE.Clock();
 let T = 0;
 renderer.setAnimationLoop((time, frame) => {
   const dt = Math.min(0.05, clock.getDelta()); T += dt;
-  if(xrActive){ xrFrame(dt); xrHitFrame(frame); }
+  if(xrActive){ xrFrame(dt); xrHitFrame(frame); xrDiagFrame(frame); }
   for(const m of cfg.modules){ const R = RT.get(m.id); if(!R) continue; stepModule(m, R, dt, T); emitModule(m, R, dt, T); }
   camera.getWorldPosition(camWorld); camera.getWorldDirection(camDir);
   if(renderer.xr.isPresenting){

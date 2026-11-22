@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test RA</title>
+<style>
+body{margin:0;background:#0e1216;color:#e8ecef;font:16px/1.45 system-ui,sans-serif;padding:20px}
+button{font:inherit;padding:14px 18px;border-radius:10px;border:0;background:#f3b61f;color:#1b1504;font-weight:600}
+#ov{position:fixed;inset:0;display:none}
+#ov.on{display:block}
+#st{position:absolute;top:12px;left:12px;right:12px;background:rgba(0,0,0,.7);padding:10px;border-radius:8px;font:13px/1.4 monospace;color:#fff;white-space:pre-line}
+#q{position:absolute;bottom:20px;right:20px;background:#222;color:#fff}
+#log{white-space:pre-line;font:13px monospace;color:#9aa}
+</style>
+</head>
+<body>
+<h1>Test de réalité augmentée</h1>
+<p>Cette page vérifie que le téléphone sait garder un objet fixe dans l'espace. Touchez le bouton, visez le sol ou un mur bien éclairé : un anneau jaune apparaît sur les surfaces détectées. Touchez l'écran pour y poser un cube, puis tournez autour. Le cube doit rester en place.</p>
+<button id="go">Démarrer le test</button>
+<p id="log"></p>
+<div id="ov"><div id="st">Démarrage…</div><button id="q">Quitter</button></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const log = t => document.getElementById('log').textContent += t + '\n';
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.xr.enabled = true; renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement); renderer.domElement.style.display = 'none';
+const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 100);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2));
+const reticle = new THREE.Mesh(new THREE.RingGeometry(0.06, 0.08, 32).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({color:0xf3b61f}));
+reticle.matrixAutoUpdate = false; reticle.visible = false; scene.add(reticle);
+const cubes = [];
+(async () => {
+  log('WebXR : ' + (navigator.xr ? 'présent' : 'ABSENT'));
+  try{ log('Réalité augmentée : ' + (await navigator.xr?.isSessionSupported('immersive-ar') ? 'gérée' : 'NON gérée (ARCore absent ou non certifié ?)')); }catch(e){ log('Réalité augmentée : erreur ' + e.message); }
+})();
+let hitSrc = null, ref = null, frames = 0, lost = 0, emu = 0;
+document.getElementById('go').onclick = async () => {
+  try{
+    const ov = document.getElementById('ov');
+    const s = await navigator.xr.requestSession('immersive-ar', {requiredFeatures:['hit-test'], optionalFeatures:['dom-overlay'], domOverlay:{root:ov}});
+    renderer.xr.setReferenceSpaceType('local'); await renderer.xr.setSession(s);
+    ov.classList.add('on'); ref = renderer.xr.getReferenceSpace();
+    hitSrc = await s.requestHitTestSource({space: await s.requestReferenceSpace('viewer')});
+    ov.addEventListener('beforexrselect', e => { if(e.target.id === 'q') e.preventDefault(); });
+    s.addEventListener('select', () => { if(!reticle.visible) return; const c = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.15,0.15), new THREE.MeshStandardMaterial({color:0xff6a2a})); c.position.setFromMatrixPosition(reticle.matrix); c.position.y += 0.075; scene.add(c); cubes.push(c); });
+    document.getElementById('q').onclick = () => s.end();
+    s.addEventListener('end', () => { ov.classList.remove('on'); log(`Session terminée : ${frames} images, suivi perdu ${lost}, rotation seule ${emu}, cubes posés ${cubes.length}`); });
+  }catch(e){ log('Échec du démarrage : ' + e.message); }
+};
+renderer.setAnimationLoop((t, frame) => {
+  if(frame && ref){
+    frames++;
+    const pose = frame.getViewerPose(ref);
+    if(!pose) lost++; else if(pose.emulatedPosition) emu++;
+    let hit = false;
+    if(hitSrc){ const r = frame.getHitTestResults(hitSrc); if(r.length){ const p = r[0].getPose(ref); if(p){ reticle.visible = true; reticle.matrix.fromArray(p.transform.matrix); hit = true; } } if(!hit) reticle.visible = false; }
+    if(frames % 10 === 0){
+      const pos = pose ? pose.transform.position : null;
+      document.getElementById('st').textContent = `Suivi : ${!pose ? 'PERDU' : pose.emulatedPosition ? 'ROTATION SEULE (position non suivie)' : 'OK'}\nSurface détectée : ${hit ? 'oui' : 'non'}\nPosition : ${pos ? [pos.x,pos.y,pos.z].map(v=>v.toFixed(2)).join(' / ') : '—'}\nCubes posés : ${cubes.length} · touchez l'écran pour poser`;
+    }
+  }
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

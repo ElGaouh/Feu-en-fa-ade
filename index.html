@@ -149,6 +149,9 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
 #xrctx .ch{font:600 13px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.08em;color:#aab4be;padding:6px 8px}
 #xrctx button{background:none;border:0;text-align:left;padding:11px 10px}
 #xrctx button.del{color:var(--danger)}
+.xr-cal{position:absolute;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom,0px));background:rgba(18,22,27,.94);border:1px solid var(--accent);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.xr-cal p{margin:0;text-align:center}
+.xr-top{flex-wrap:wrap}
 .xr-adj{position:absolute;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom,0px));background:rgba(18,22,27,.92);border:1px solid var(--accent);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
 .xr-adj-t{font-size:13px;color:#cfd6dc;text-align:center}
 .xr-adj-r{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap}
@@ -319,10 +322,12 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
 <div id="xrui" hidden>
   <div class="xr-top">
     <div class="xr-dist"><span id="xrDist">Façade : 12 m</span><button id="xrNear" aria-label="Plus près">−</button><button id="xrFar" aria-label="Plus loin">+</button></div>
+    <button id="xrCal">Caler la façade</button>
     <button id="xrExit">Quitter</button>
   </div>
   <div class="xr-hint" id="xrHint">Visez le bâtiment, puis faites un appui long sur une fenêtre pour y poser une vignette.</div>
   <div class="xr-cross" aria-hidden="true"></div>
+  <div class="xr-cal" id="xrCalBox" hidden><p id="xrCalTxt"></p><div class="xr-adj-r"><button id="xrCalCancel">Annuler</button><button id="xrCalGo" class="ok">Visée 1</button></div></div>
   <div id="xrctx" hidden></div>
   <div class="xr-adj" id="xrAdj" hidden>
     <div class="xr-adj-t">Glissez un doigt pour déplacer, pincez pour agrandir</div>
@@ -1752,10 +1757,10 @@ function touchRay(x, y){
 const xrDist = () => xrHitDist ?? xrDistManual;
 function xrToast(msg){ const t = $('#xrToast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('show'), 2200); }
 function xrUIRender(){
-  $('#xrDist').textContent = xrPlane ? 'Façade calée' : (xrHitDist != null ? `Façade détectée : ${xrHitDist.toFixed(1)} m` : `Façade : ${xrDistManual.toFixed(0)} m`);
+  $('#xrDist').textContent = xrPlane ? `Façade à ${new V3().setFromMatrixPosition(xrCam().matrixWorld).distanceTo(xrPlane.p).toFixed(1)} m` : (xrHitDist != null ? `Façade détectée : ${xrHitDist.toFixed(1)} m` : `Façade : ${xrDistManual.toFixed(0)} m`);
   const unplaced = cfg.modules.filter(m => !m.xr).length;
   $('#xrHint').textContent = xrAdj ? '' : (unplaced ? `Appui long sur une fenêtre pour poser une vignette (${unplaced} préparée${unplaced>1?'s':''} sur la tablette).` : 'Appui long sur une fenêtre : poser une vignette. Sur une vignette : la régler.');
-  $('#xrHint').hidden = !!xrAdj;
+  $('#xrHint').hidden = !!xrAdj || !!cal;
 }
 function moduleAt(x, y){
   const {o, d} = touchRay(x, y); let best = null, bd = 1e9;
@@ -1819,6 +1824,7 @@ function xrModuleMenu(m, x, y){
   ui.addEventListener('pointerdown', e => {
     if(e.target.closest('button, #xrctx, .xr-adj')) return;
     if(!xrctx.hidden){ xrCloseMenu(); return; }
+    if(cal) return;
     pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
     if(pts.size === 1){
       start = {x:e.clientX, y:e.clientY, lx:e.clientX, ly:e.clientY};
@@ -1861,6 +1867,37 @@ function xrModuleMenu(m, x, y){
   $('#xrFar').onclick = () => { if(xrPlane){ xrToast('Façade déjà calée : faites « Recaler la façade » depuis le menu.'); return; } xrHitDist = null; xrDistManual = Math.min(80, xrDistManual + 2); xrUIRender(); };
   $('#xrExit').onclick = () => renderer.xr.getSession()?.end();
 })();
+/* calage par deux visées : on vise le même point depuis deux endroits, l'intersection donne sa vraie distance.
+   Sans distance juste, la vignette glisse par rapport au bâtiment dès qu'on se déplace (parallaxe). */
+let cal = null;
+function closestPoint(a, b){
+  const w0 = a.o.clone().sub(b.o), A = a.d.dot(a.d), B = a.d.dot(b.d), C = b.d.dot(b.d), D = a.d.dot(w0), E = b.d.dot(w0);
+  const den = A*C - B*B; if(Math.abs(den) < 1e-6) return null;
+  const s1 = (B*E - C*D)/den, s2 = (A*E - B*D)/den; if(s1 < 1 || s2 < 1) return null;
+  return {p: a.o.clone().addScaledVector(a.d, s1).add(b.o.clone().addScaledVector(b.d, s2)).multiplyScalar(0.5), gap: a.o.distanceTo(b.o), angle: Math.acos(clamp(B/Math.sqrt(A*C), -1, 1))};
+}
+function calRender(){
+  const box = $('#xrCalBox'); box.hidden = !cal; $('#xrHint').hidden = !!cal || !!xrAdj;
+  if(!cal) return;
+  $('#xrCalTxt').textContent = cal.step === 1 ? 'Placez la croix jaune sur un point net de la façade (coin de fenêtre, angle de balcon), puis touchez « Visée 1 ».' : 'Décalez-vous de 3 à 6 pas sur le côté, visez exactement le même point, puis touchez « Visée 2 ».';
+  $('#xrCalGo').textContent = cal.step === 1 ? 'Visée 1' : 'Visée 2';
+}
+$('#xrCal').onclick = () => { xrCloseMenu(); cal = {step:1}; calRender(); };
+$('#xrCalCancel').onclick = () => { cal = null; calRender(); };
+$('#xrCalGo').onclick = () => {
+  const r = touchRay(innerWidth/2, innerHeight/2);
+  if(cal.step === 1){ cal.a = r; cal.step = 2; calRender(); return; }
+  const res = closestPoint(cal.a, r);
+  if(!res || res.gap < 1 || res.angle < 0.02){ xrToast('Visées trop proches : décalez-vous davantage sur le côté et recommencez la visée 2.'); return; }
+  const hz = new V3(cal.a.d.x, 0, cal.a.d.z).normalize(), yaw = Math.atan2(-hz.x, -hz.z);
+  const old = xrPlane, a = cal.a;
+  setPlane(res.p, yaw);
+  // les vignettes déjà posées sont reportées sur la façade recalée, dans la même direction vue depuis la visée 1
+  for(const m of cfg.modules){ if(!m.xr) continue; const pos = new V3().fromArray(m.xr.p); const d = pos.sub(a.o).normalize(); const hit = rayPlane(a.o, d, xrPlane); if(hit){ m.xr.p = [hit.x, hit.y, hit.z]; m.xr.yaw = yaw; layout(m); } }
+  cal = null; calRender(); changed(); xrUIRender();
+  xrToast(`Façade calée à ${a.o.distanceTo(res.p).toFixed(1)} m.`);
+};
+
 let hitTick = 0;
 function xrHitFrame(frame){
   if(!xrHitSrc || !frame || xrPlane) return;
@@ -1884,7 +1921,7 @@ async function startXR(){
     if(!controllers.length) setupControllers();
     layoutAll(); xrHintUpdate(); renderAll();
     session.addEventListener('end', () => {
-      $('#xrui').hidden = true; xrCloseMenu(); xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
+      $('#xrui').hidden = true; xrCloseMenu(); cal = null; $('#xrCalBox').hidden = true; xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
       xrActive = false; carry = null; renderer.setClearColor(0x07090b, 1); photoMesh.visible = true;
       layoutAll(); resize(); renderAll();
     });

@@ -1,0 +1,1572 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Feu en façade RA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Pupitre opérateur : panneau graphite à gauche, scène plein cadre à droite. Jaune sécurité pour l'action, orange feu / gris fumée / cyan victime comme code couleur. */
+:root{
+  --bg:#0e1216; --panel:#151a20; --panel2:#1c232b; --raise:#232b35; --line:#2c3540;
+  --fg:#e8ecef; --muted:#93a0ac; --accent:#f3b61f; --accent-ink:#1b1504;
+  --fire:#ff6a2a; --smoke:#9ba5ae; --victim:#5cc6f0; --danger:#ff5b50; --ok:#5fd18b;
+  --f-display:'Barlow Condensed','Arial Narrow',sans-serif;
+  --f-body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--f-body);overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app{display:grid;grid-template-columns:minmax(320px,380px) 1fr;height:100%}
+#panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border-right:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;padding:14px 16px 10px}
+.brand svg{width:30px;height:30px;flex:none}
+.brand h1{font:700 22px/1 var(--f-display);letter-spacing:.02em;margin:0;text-transform:uppercase}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:12px}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0 16px 10px}
+.tabs button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 4px;font:600 15px/1 var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.scroll{flex:1;overflow:auto;padding:4px 16px 24px;min-height:0}
+.view{display:flex;flex-direction:column;gap:18px}
+h2{font:600 15px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;display:flex;align-items:center;gap:8px}
+h2 .pill{margin-left:auto}
+.hint{color:var(--muted);font-size:12.5px;margin:0}
+.pill{font:500 11px/1 var(--f-mono);padding:4px 7px;border-radius:99px;background:var(--raise);color:var(--fg);letter-spacing:0;text-transform:none}
+.vgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vcard{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px;min-width:0}
+.vcard:hover{border-color:#46525f}
+.vcard[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.vcard canvas{width:100%;height:auto;aspect-ratio:16/10;border-radius:5px;display:block;background:#0b0e11}
+.vcard b{font-weight:600;font-size:13px;line-height:1.2}
+.vcard span{font-size:11.5px;color:var(--muted);line-height:1.3}
+.mlist{display:flex;flex-direction:column;gap:6px}
+.mrow{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.mrow.sel{border-color:var(--accent)}
+.mrow .nm{background:none;border:0;text-align:left;padding:2px 0;min-width:0}
+.mrow .nm b{display:block;font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .nm small{color:var(--muted);font-size:11px}
+.dots{display:flex;gap:3px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--raise)}
+.dot.f{background:var(--fire)} .dot.s{background:var(--smoke)} .dot.v{background:var(--victim)}
+.eye{background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px}
+.eye[aria-pressed="false"]{color:var(--muted);text-decoration:line-through}
+.field{display:flex;flex-direction:column;gap:5px}
+.field>.lbl{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted)}
+.field>.lbl output{font-family:var(--f-mono);color:var(--fg);font-size:12px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{flex:1 1 auto;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12.5px}
+.seg button[aria-pressed="true"]{background:var(--raise);border-color:var(--accent);color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+.btn{background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:13px}
+.btn:hover{border-color:#4a5663}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.danger{color:var(--danger)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.check{display:flex;align-items:center;gap:8px;font-size:13px}
+.check input{accent-color:var(--accent);width:16px;height:16px}
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper button{width:34px;height:32px;border-radius:6px;background:var(--raise);border:1px solid var(--line);font-size:16px}
+.stepper output{min-width:24px;text-align:center;font-family:var(--f-mono)}
+.empty{color:var(--muted);font-size:13px;background:var(--panel2);border:1px dashed var(--line);border-radius:8px;padding:12px;margin:0}
+.box{display:flex;flex-direction:column;gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+/* Pupitre */
+.gauge{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center}
+.gauge .nm{font:600 15px/1 var(--f-display);text-transform:uppercase;letter-spacing:.06em}
+.bar{height:10px;border-radius:99px;background:var(--raise);overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,#ffd166,var(--fire));width:50%;transition:width .3s}
+.pad{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pad button{background:var(--raise);border:1px solid var(--line);border-radius:8px;padding:12px 8px;font-weight:600;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:6px;min-height:46px}
+.pad button:active{transform:translateY(1px)}
+.pad .wide{grid-column:span 2}
+.pad .hot{background:#3a1d12;border-color:#7a3418;color:#ffb38a}
+.pad .cool{background:#112631;border-color:#22506a;color:#9bd8f5}
+.pad .sm{background:#22262b}
+.ptitle{display:flex;align-items:baseline;gap:8px}
+.ptitle b{font:600 20px/1.1 var(--f-display);letter-spacing:.02em}
+.meters{display:grid;grid-template-columns:auto 1fr auto;gap:4px 8px;align-items:center;font-size:12px;color:var(--muted)}
+.meters .bar{height:6px}
+.meters output{font-family:var(--f-mono);color:var(--fg)}
+.bar.s i{background:linear-gradient(90deg,#c9cfd4,#3b4046)} .bar.d i{background:linear-gradient(90deg,#e5e5e5,#111)}
+/* Scène */
+#stage{position:relative;min-width:0;min-height:0;background:#07090b;overflow:hidden}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#overlay{position:absolute;inset:0;pointer-events:none}
+.mbox{position:absolute;border:1.5px dashed rgba(255,255,255,.55);border-radius:2px;pointer-events:auto;cursor:move;touch-action:none}
+.mbox.sel{border:2px solid var(--accent);box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.mbox.hid{border-color:rgba(255,255,255,.25);background:repeating-linear-gradient(45deg,rgba(255,255,255,.06) 0 6px,transparent 6px 12px)}
+.mbox .tag{position:absolute;left:-2px;bottom:100%;margin-bottom:3px;font:600 11px/1 var(--f-body);background:rgba(10,12,15,.8);color:#fff;padding:3px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
+.mbox.sel .tag{background:var(--accent);color:var(--accent-ink)}
+.hdl{position:absolute;width:16px;height:16px;background:var(--accent);border:2px solid #111;border-radius:3px;display:none}
+.mbox.sel .hdl{display:block}
+.hdl.tl{left:-9px;top:-9px;cursor:nwse-resize}.hdl.tr{right:-9px;top:-9px;cursor:nesw-resize}.hdl.bl{left:-9px;bottom:-9px;cursor:nesw-resize}.hdl.br{right:-9px;bottom:-9px;cursor:nwse-resize}
+.topbar{position:absolute;top:10px;left:10px;right:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;pointer-events:none}
+.topbar>*{pointer-events:auto}
+.tb{background:rgba(14,18,22,.82);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:7px 11px;font-size:13px;color:#fff}
+.tb:hover{border-color:rgba(255,255,255,.3)}
+.tb.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.tb.on{border-color:var(--accent);color:var(--accent)}
+.spacer{flex:1}
+#armed{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(14,18,22,.88);border:1px solid var(--accent);color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;pointer-events:auto;display:flex;gap:10px;align-items:center;max-width:calc(100% - 24px)}
+#toast{position:absolute;left:50%;top:58px;transform:translateX(-50%);background:#222a33;border:1px solid var(--line);padding:8px 12px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100% - 24px);text-align:center}
+#toast.show{opacity:1}
+.linkpill{font:500 12px/1 var(--f-mono);padding:7px 10px;border-radius:99px;background:rgba(14,18,22,.82);border:1px solid rgba(255,255,255,.12);color:var(--muted)}
+.linkpill.ok{color:var(--ok);border-color:rgba(95,209,139,.4)}
+/* Vue stagiaire */
+#app.trainee{grid-template-columns:1fr}
+#app.trainee #panel,#app.trainee #overlay,#app.trainee .topbar .ed,#app.trainee #armed{display:none!important}
+#exitTrainee{display:none}
+#app.trainee #exitTrainee{display:inline-block;opacity:.35}
+#app.trainee #exitTrainee:hover{opacity:1}
+/* Modale */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.modal .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;max-width:520px;width:100%;display:flex;flex-direction:column;gap:12px;max-height:100%;overflow:auto}
+.modal h3{margin:0;font:600 22px/1.1 var(--f-display);letter-spacing:.02em}
+.code{font:500 34px/1 var(--f-mono);letter-spacing:.18em;color:var(--accent);text-align:center;padding:10px;background:var(--panel2);border-radius:8px}
+@media (max-width:820px){
+  #app{grid-template-columns:1fr;grid-template-rows:52% 48%}
+  #stage{order:-1}
+  #panel{border-right:0;border-top:1px solid var(--line)}
+  .brand{display:none}
+  .tabs{padding-top:10px}
+}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+
+<div id="app">
+  <aside id="panel">
+    <header class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="5" width="26" height="22" rx="2" fill="none" stroke="#f3b61f" stroke-width="2"/><path d="M16 9c1.4 3.6 5 4.6 5 9.2a5 5 0 0 1-10 0c0-2.4 1.3-3.6 2.4-4.8.1 2.2 1.1 3.4 2.4 3.4 0-2.6-1.4-4.6.2-7.8z" fill="#ff6a2a"/></svg>
+      <div><h1>Feu en façade</h1><p>Vignettes d'incendie à poser sur un bâtiment réel</p></div>
+    </header>
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tab-vig" aria-selected="true">Vignettes</button>
+      <button role="tab" id="tab-reg" aria-selected="false">Réglages</button>
+      <button role="tab" id="tab-pup" aria-selected="false">Pupitre</button>
+    </nav>
+    <div class="scroll">
+      <!-- VIGNETTES -->
+      <div class="view" id="view-vig">
+        <section>
+          <h2>Palette</h2>
+          <p class="hint" style="margin-bottom:10px">Choisissez une vignette, puis touchez la fenêtre du bâtiment où la poser. Ajustez ensuite le cadre aux dimensions réelles de la fenêtre.</p>
+          <div class="vgrid" id="vgrid"></div>
+        </section>
+        <section>
+          <h2>Sur le bâtiment <span class="pill" id="mcount">0</span></h2>
+          <div class="mlist" id="mlist"></div>
+        </section>
+      </div>
+      <!-- RÉGLAGES -->
+      <div class="view" id="view-reg" hidden>
+        <section>
+          <h2>Vignette sélectionnée <span class="pill" id="selName">aucune</span></h2>
+          <p class="empty" id="inspEmpty">Touchez un cadre sur l'image, ou une ligne de la liste, pour le régler.</p>
+          <div class="box" id="insp" hidden>
+            <div class="field"><span class="lbl">Nom</span><input type="text" id="inName" maxlength="40"></div>
+            <div class="field"><span class="lbl">Support</span><div class="seg" id="inMode"></div></div>
+            <div class="field"><span class="lbl">Sortie de la fumée</span><div class="seg" id="inExit"></div></div>
+            <div class="field"><span class="lbl">Débit de fumée <output id="oSmoke"></output></span><input type="range" id="inSmoke" min="0" max="100"></div>
+            <div class="field"><span class="lbl">Couleur de fumée <output id="oDark"></output></span><input type="range" id="inDark" min="0" max="100"></div>
+            <div class="field"><span class="lbl">Pulsations <output id="oPulse"></output></span><input type="range" id="inPulse" min="0" max="100"></div>
+            <div class="field"><span class="lbl">Feu <output id="oFire"></output></span><input type="range" id="inFire" min="0" max="100"></div>
+            <div class="field"><span class="lbl">Intérieur de la fenêtre</span><div class="seg" id="inFill"></div></div>
+            <label class="check"><input type="checkbox" id="inSoot"> Traces de suie au-dessus de l'ouverture</label>
+            <div class="field"><span class="lbl">Victimes</span>
+              <div class="row" style="align-items:center"><div class="stepper"><button id="vMinus" aria-label="Retirer une victime">−</button><output id="vCount">0</output><button id="vPlus" aria-label="Ajouter une victime">+</button></div>
+              <select id="inPose" style="flex:1;min-width:140px"></select></div>
+            </div>
+            <div class="field"><span class="lbl">Séquence réaliste (vidéo ou image) <output id="oMedia">aucune</output></span>
+              <div class="row"><label class="btn" for="mediaIn" style="display:inline-block">Importer une séquence</label><button class="btn" id="mediaDel">Retirer</button></div>
+              <input type="file" id="mediaIn" accept="video/*,image/*" hidden>
+              <div class="seg" id="inMediaKey"></div>
+              <div class="field"><span class="lbl">Hauteur <output id="oMH"></output></span><input type="range" id="inMH" min="0.3" max="8" step="0.05"></div>
+              <div class="field"><span class="lbl">Position verticale <output id="oMY"></output></span><input type="range" id="inMY" min="-2" max="6" step="0.05"></div>
+              <p class="hint">Personne filmée ou photographiée et détourée, flammes ou fumée filmées sur fond noir. Remplace la silhouette 3D. Le fichier reste sur cet appareil : importez-le aussi dans le masque.</p>
+            </div>
+            <div class="row"><button class="btn" id="bDup">Dupliquer</button><button class="btn" id="bHide">Masquer</button><button class="btn danger" id="bDel">Supprimer</button></div>
+          </div>
+        </section>
+        <section>
+          <h2>Ambiance</h2>
+          <div class="box">
+            <div class="field"><span class="lbl">Moment</span><div class="seg" id="inTime"></div></div>
+            <div class="field"><span class="lbl">Tirage <output id="oDraft"></output></span><input type="range" id="inDraft" min="0" max="100"></div>
+            <div class="field"><span class="lbl">Vent <output id="oWind"></output></span><input type="range" id="inWind" min="-100" max="100" step="5"></div>
+          </div>
+        </section>
+        <section>
+          <h2>Bâtiment</h2>
+          <div class="box">
+            <p class="hint">Prenez le bâtiment en photo de face, depuis l'endroit où se tiendra le stagiaire. La photo reste sur cet appareil.</p>
+            <div class="row"><label class="btn primary" for="photoIn" style="display:inline-block">Prendre ou importer une photo</label><button class="btn" id="bSample">Photo d'exemple</button></div>
+            <input type="file" id="photoIn" accept="image/*" capture="environment" hidden>
+          </div>
+        </section>
+        <section>
+          <h2>Configuration</h2>
+          <div class="box">
+            <p class="hint">Enregistrée automatiquement sur cet appareil. Exportez-la pour la transférer sur un autre.</p>
+            <div class="row"><button class="btn" id="bExport">Exporter</button><button class="btn" id="bImport">Importer</button><button class="btn danger" id="bClear">Tout retirer</button></div>
+          </div>
+        </section>
+      </div>
+      <!-- PUPITRE -->
+      <div class="view" id="view-pup" hidden>
+        <section>
+          <h2>Conditions générales</h2>
+          <div class="box">
+            <div class="gauge"><span class="nm">Tirage</span><div class="bar"><i id="gDraft"></i></div><button class="btn" data-g="draft-">−</button><button class="btn" data-g="draft+">+</button></div>
+            <div class="row"><button class="btn" data-g="wind-l" style="flex:1">← Vent</button><button class="btn" data-g="wind-0" style="flex:1">Vent nul</button><button class="btn" data-g="wind-r" style="flex:1">Vent →</button></div>
+            <div class="row"><button class="btn" data-g="all-show" style="flex:1">Tout afficher</button><button class="btn" data-g="all-out" style="flex:1">Tout éteindre</button></div>
+          </div>
+        </section>
+        <section>
+          <h2>Faire évoluer</h2>
+          <p class="empty" id="pupEmpty">Sélectionnez une vignette dans la liste ci-dessous ou sur l'image.</p>
+          <div class="box" id="pup" hidden>
+            <div class="ptitle"><b id="pName"></b><span class="pill" id="pState"></span></div>
+            <div class="meters">
+              <span>Fumée</span><div class="bar s"><i id="mSmoke"></i></div><output id="mSmokeV"></output>
+              <span>Noirceur</span><div class="bar d"><i id="mDark"></i></div><output id="mDarkV"></output>
+              <span>Feu</span><div class="bar"><i id="mFire"></i></div><output id="mFireV"></output>
+            </div>
+            <div class="pad">
+              <button data-a="smoke+">+ Fumée</button><button data-a="smoke-" class="sm">− Fumée</button>
+              <button data-a="dark+">Plus noire</button><button data-a="dark-" class="sm">Plus claire</button>
+              <button data-a="fire+" class="hot">+ Flammes</button><button data-a="fire-" class="sm">− Flammes</button>
+              <button data-a="pulse">Pulsations</button><button data-a="flash" class="hot">Embrasement</button>
+              <button data-a="vic+">+ Victime</button><button data-a="vic-" class="sm">Victime évacuée</button>
+              <button data-a="extinct" class="cool wide">Attaque / extinction (vapeur blanche)</button>
+              <button data-a="vis" class="wide" id="pVis">Masquer</button>
+            </div>
+          </div>
+        </section>
+        <section>
+          <h2>Toutes les vignettes</h2>
+          <div class="mlist" id="plist"></div>
+        </section>
+      </div>
+    </div>
+  </aside>
+
+  <main id="stage">
+    <canvas id="c"></canvas>
+    <div id="overlay"></div>
+    <div class="topbar">
+      <button class="tb ed" id="bTrainee">Vue stagiaire</button>
+      <button class="tb ed" id="bXR">Réalité augmentée</button>
+      <button class="tb ed" id="bLink">Relier tablette et masque</button>
+      <span class="spacer"></span>
+      <span class="linkpill" id="linkState">Non relié</span>
+      <button class="tb" id="exitTrainee">Quitter la vue stagiaire</button>
+    </div>
+    <div id="armed" hidden><span id="armedTxt"></span><button class="btn" id="armedCancel">Annuler</button></div>
+    <div id="toast"></div>
+  </main>
+</div>
+
+<div class="modal" id="mLink" hidden>
+  <div class="card">
+    <h3>Relier tablette et masque</h3>
+    <p class="hint">La tablette de l'opérateur crée une session, le masque (ou un autre écran) la rejoint avec le code. Tout ce que l'opérateur change apparaît en direct dans le masque.</p>
+    <p class="hint">Sur le même appareil, la vue stagiaire ouverte dans un autre onglet suit déjà sans code.</p>
+    <div class="row"><button class="btn primary" id="lHost">Créer une session (opérateur)</button></div>
+    <div class="code" id="lCode" hidden></div>
+    <div class="row" style="align-items:center"><input type="text" id="lJoinCode" placeholder="Code à 4 chiffres" inputmode="numeric" maxlength="4" style="flex:1;min-width:120px"><button class="btn" id="lJoin">Rejoindre (masque)</button></div>
+    <p class="hint" id="lMsg"></p>
+    <div class="row"><button class="btn" id="lClose">Fermer</button></div>
+  </div>
+</div>
+
+<div class="modal" id="mIO" hidden>
+  <div class="card">
+    <h3 id="ioTitle">Exporter</h3>
+    <p class="hint" id="ioHint"></p>
+    <textarea id="ioText" rows="8" spellcheck="false" style="font-family:var(--f-mono);font-size:12px"></textarea>
+    <div class="row"><button class="btn primary" id="ioGo">Copier</button><button class="btn" id="ioClose">Fermer</button></div>
+  </div>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const lerp = (a,b,t) => a + (b-a)*t;
+const rnd = Math.random;
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+/* ------------------------------------------------------------------ */
+/* Données : vignettes                                                 */
+/* ------------------------------------------------------------------ */
+const BASE = {smoke:0, dark:50, pulse:0, fire:0, fill:'aucun', soot:false, victims:0, pose:'appel', exit:'ouverte', mediaKey:'alpha', mediaH:1.75, mediaY:-0.95};
+const MKEYS = {alpha:'Transparence', noir:'Fond noir', vert:'Fond vert'};
+const VIGNETTES = [
+  {key:'fum-claire', label:'Fumée claire', desc:'Fumée blanche à grise par une fenêtre ouverte', mode:'fenetre', p:{smoke:45, dark:20}},
+  {key:'fum-noire', label:'Fumée noire épaisse', desc:'Fumée chaude et dense, intérieur invisible', mode:'fenetre', p:{smoke:75, dark:92, fill:'sombre'}},
+  {key:'fum-pulsee', label:'Fumée pulsée', desc:'Sorties par bouffées, signe d’alerte', mode:'fenetre', p:{smoke:62, dark:88, pulse:75, fill:'noircie'}},
+  {key:'fum-fuite', label:'Fumée en fuite', desc:'Fenêtre fermée, la fumée s’échappe du cadre', mode:'fenetre', p:{smoke:40, dark:55, exit:'fuites', fill:'noircie'}},
+  {key:'lueur', label:'Lueur derrière la vitre', desc:'Feu intérieur visible, rien ne sort encore', mode:'fenetre', p:{fire:18, fill:'sombre', smoke:0}},
+  {key:'flammes', label:'Flammes à la fenêtre', desc:'Flammes sortantes et fumée noire', mode:'fenetre', p:{fire:58, dark:85, fill:'sombre', soot:true}},
+  {key:'embrasement', label:'Embrasement', desc:'Flammes hautes qui lèchent la façade', mode:'fenetre', p:{fire:96, smoke:70, dark:95, fill:'sombre', soot:true}},
+  {key:'vic-fenetre', label:'Victime à la fenêtre', desc:'Personne qui appelle, sans fumée', mode:'fenetre', p:{victims:1, fill:'sombre'}},
+  {key:'vic-fumee', label:'Victime dans la fumée', desc:'Personne à la fenêtre, fumée derrière elle', mode:'fenetre', p:{victims:1, smoke:45, dark:65, fill:'sombre'}},
+  {key:'vic-balcon', label:'Victime au balcon', desc:'Personne réfugiée sur le balcon', mode:'balcon', p:{victims:1}},
+  {key:'vic-balcon-fum', label:'Balcon enfumé', desc:'Personne au balcon, fumée par la porte-fenêtre', mode:'balcon', p:{victims:2, smoke:55, dark:80}},
+  {key:'escalier', label:'Cage d’escalier enfumée', desc:'Fumée qui suinte des fenêtres de l’escalier', mode:'fenetre', p:{smoke:35, dark:60, exit:'fuites', fill:'noircie'}},
+  {key:'porte', label:'Fumée par la porte', desc:'Porte d’entrée ou de hall ouverte', mode:'porte', p:{smoke:55, dark:75, fill:'sombre'}},
+  {key:'toiture', label:'Fumée en toiture', desc:'Panache au-dessus de la ligne de toit', mode:'toit', p:{smoke:65, dark:80}},
+];
+const MODES = {fenetre:'Fenêtre', balcon:'Balcon', porte:'Porte', toit:'Toiture'};
+const MODE_SIZE = {fenetre:[1.3,1.55], balcon:[1.6,2.3], porte:[1.4,2.3], toit:[8,0.6]};
+const EXITS = {ouverte:'Par l’ouverture', fuites:'Fuites autour du cadre'};
+const FILLS = {aucun:'Inchangé', noircie:'Vitre noircie', sombre:'Ouverture sombre'};
+const POSES = {appel:'Appelle à l’aide', penche:'Penchée au dehors', immobile:'Immobile'};
+const TIMES = {jour:'Jour', crepuscule:'Crépuscule', nuit:'Nuit'};
+
+const fireWord = f => f<=0 ? 'aucun' : f<=25 ? 'lueur intérieure' : f<=60 ? 'flammes sortantes' : f<=85 ? 'flammes hautes' : 'embrasement';
+const darkWord = d => d<20 ? 'blanche' : d<45 ? 'grise claire' : d<70 ? 'grise' : d<88 ? 'noire' : 'très noire';
+
+/* ------------------------------------------------------------------ */
+/* État + persistance                                                  */
+/* ------------------------------------------------------------------ */
+const KEY = 'feu-facade-ra.v1';
+const CLIENT = uid();
+let photoURL = null;       // null = photo d'exemple
+let photoVer = 0;
+let cfg = null;
+let selId = null;
+let armed = null;          // clé de vignette en attente de pose
+
+function sampleConfig(){
+  const mk = (key, f, c, extra={}) => {
+    const v = VIGNETTES.find(x=>x.key===key);
+    const r = sampleRect(f, c, v.mode);
+    return {id:uid(), type:key, name:extra.name || v.label, mode:v.mode, visible: extra.visible ?? true, rect:r, xr:null, p:{...BASE, ...v.p, ...(extra.p||{})}};
+  };
+  return {
+    global:{draft:50, wind:25, time:'jour'},
+    modules:[
+      mk('flammes', 2, 2, {name:'Feu – 2e étage'}),
+      mk('fum-fuite', 3, 2, {name:'Fumée – 3e étage'}),
+      mk('vic-fenetre', 4, 1, {name:'Victime – 4e étage'}),
+      mk('vic-balcon', 3, 4, {name:'Balcon – 3e étage'}),
+      mk('toiture', 6, 0, {name:'Toiture (préparée)', visible:false}),
+    ]
+  };
+}
+function loadState(){
+  try{
+    const j = JSON.parse(localStorage.getItem(KEY));
+    if(j && j.cfg && Array.isArray(j.cfg.modules)){ cfg = j.cfg; photoURL = j.photo || null; return; }
+  }catch(e){}
+  cfg = sampleConfig();
+}
+let saveT = 0;
+function save(){
+  clearTimeout(saveT);
+  saveT = setTimeout(()=>{
+    try{ localStorage.setItem(KEY, JSON.stringify({cfg, photo:photoURL})); }
+    catch(e){ try{ localStorage.setItem(KEY, JSON.stringify({cfg, photo:null})); }catch(_){} }
+  }, 300);
+}
+
+/* ------------------------------------------------------------------ */
+/* Photo d'exemple (image de remplacement tant qu'aucune photo n'est importée) */
+/* ------------------------------------------------------------------ */
+const SP = {W:1600, H:1000, x0:170, x1:1430, ground:905, floors:6, s:41};
+SP.fh = 3*SP.s; SP.bay = (SP.x1-SP.x0)/6;
+function sampleRect(f, c, mode){
+  const s = SP.s, cx = SP.x0 + SP.bay*(c+.5), fy = SP.ground - f*SP.fh;
+  let w, h, yb;
+  if(mode==='toit'){ w = SP.x1-SP.x0-20; h = 0.6*s; yb = SP.ground - 6*SP.fh + 0.2*s; return {u:(SP.x0+10)/SP.W, v:(yb-h-0.9*s)/SP.H, w:w/SP.W, h:h/SP.H}; }
+  if(mode==='balcon'){ w = 1.7*s; h = 2.35*s; yb = fy - 0.05*s; }
+  else if(mode==='porte'){ w = 1.4*s; h = 2.3*s; yb = fy; }
+  else { w = 1.3*s; h = 1.55*s; yb = fy - 0.95*s; }
+  return {u:(cx-w/2)/SP.W, v:(yb-h)/SP.H, w:w/SP.W, h:h/SP.H};
+}
+function paintSample(){
+  const cv = document.createElement('canvas'); cv.width = SP.W; cv.height = SP.H;
+  const g = cv.getContext('2d'); const s = SP.s;
+  let seed = 11; const r = () => (seed = (seed*16807)%2147483647)/2147483647;
+  const sky = g.createLinearGradient(0,0,0,SP.ground); sky.addColorStop(0,'#7fa6cf'); sky.addColorStop(1,'#d7e2ea');
+  g.fillStyle = sky; g.fillRect(0,0,SP.W,SP.H);
+  // immeubles voisins
+  g.fillStyle = '#b8b0a3'; g.fillRect(0, SP.ground-5*SP.fh-20, SP.x0, 5*SP.fh+20);
+  g.fillStyle = '#cfc8bb'; g.fillRect(SP.x1, SP.ground-7*SP.fh, SP.W-SP.x1, 7*SP.fh);
+  for(let f=0; f<7; f++) for(let i=0;i<2;i++){
+    g.fillStyle = '#4a525a';
+    if(f<5) g.fillRect(25+i*75, SP.ground-f*SP.fh-2.5*s, 1.2*s, 1.5*s);
+    g.fillRect(SP.x1+30+i*80, SP.ground-f*SP.fh-2.5*s, 1.2*s, 1.5*s);
+  }
+  // façade principale
+  const top = SP.ground - 6*SP.fh - 0.9*s;
+  g.fillStyle = '#ddd0b6'; g.fillRect(SP.x0, top, SP.x1-SP.x0, SP.ground-top);
+  for(let i=0;i<26000;i++){ g.fillStyle = r()<.5 ? `rgba(0,0,0,${r()*.06})` : `rgba(255,255,255,${r()*.07})`; g.fillRect(SP.x0+r()*(SP.x1-SP.x0), top+r()*(SP.ground-top), 2, 2); }
+  g.fillStyle = '#9d968a'; g.fillRect(SP.x0, SP.ground-SP.fh, SP.x1-SP.x0, SP.fh); // socle
+  g.fillStyle = '#c7baa0'; g.fillRect(SP.x0-6, top-8, SP.x1-SP.x0+12, 10); // couvertine
+  for(let f=1; f<6; f++){ g.fillStyle='rgba(0,0,0,.10)'; g.fillRect(SP.x0, SP.ground-f*SP.fh-4, SP.x1-SP.x0, 7); }
+  const glass = (x,y,w,h) => {
+    g.fillStyle = '#e9e5dc'; g.fillRect(x-4,y-4,w+8,h+8);
+    const gr = g.createLinearGradient(x,y,x+w,y+h); gr.addColorStop(0,'#5d7487'); gr.addColorStop(.45,'#9fb5c4'); gr.addColorStop(.55,'#3f5263'); gr.addColorStop(1,'#2c3a46');
+    g.fillStyle = gr; g.fillRect(x,y,w,h);
+    g.fillStyle = '#e9e5dc'; g.fillRect(x+w/2-2,y,4,h);
+    g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(x-4,y+h+4,w+8,5);
+  };
+  for(let f=1; f<6; f++) for(let c=0;c<6;c++){
+    const balc = c===4 && f<=4;
+    const rr = sampleRect(f, c, balc ? 'balcon' : 'fenetre');
+    const x = rr.u*SP.W, y = rr.v*SP.H, w = rr.w*SP.W, h = rr.h*SP.H;
+    glass(x+ (balc?0.2*s:0), y, w-(balc?0.4*s:0), h);
+    if(balc){
+      const by = SP.ground - f*SP.fh;
+      g.fillStyle = '#bdb4a3'; g.fillRect(x-0.6*s, by-0.05*s, w+1.2*s, 0.2*s);
+      g.strokeStyle = '#30363c'; g.lineWidth = 2;
+      g.strokeRect(x-0.55*s, by-1.05*s, w+1.1*s, 1.0*s);
+      for(let k=0;k<=18;k++){ const xx = x-0.55*s + k*(w+1.1*s)/18; g.beginPath(); g.moveTo(xx, by-1.05*s); g.lineTo(xx, by-0.05*s); g.stroke(); }
+    } else {
+      g.fillStyle = '#cfc5b0'; g.fillRect(x-6, y+h+4, w+12, 6);
+    }
+  }
+  // rez-de-chaussée : porte + vitrines
+  for(let c=0;c<6;c++){
+    if(c===2){ const rr = sampleRect(0,2,'porte'); g.fillStyle='#2b2f33'; g.fillRect(rr.u*SP.W-5, rr.v*SP.H-5, rr.w*SP.W+10, rr.h*SP.H+5); g.fillStyle='#46525c'; g.fillRect(rr.u*SP.W, rr.v*SP.H, rr.w*SP.W, rr.h*SP.H); continue; }
+    const rr = sampleRect(0,c,'fenetre'); glass(rr.u*SP.W, rr.v*SP.H, rr.w*SP.W, rr.h*SP.H);
+  }
+  // trottoir, rue
+  g.fillStyle = '#9a978f'; g.fillRect(0, SP.ground, SP.W, 40);
+  g.fillStyle = '#4a4c4f'; g.fillRect(0, SP.ground+40, SP.W, SP.H);
+  g.fillStyle = '#d8d8d2'; for(let x=20;x<SP.W;x+=140) g.fillRect(x, SP.ground+78, 70, 5);
+  g.fillStyle = 'rgba(255,255,255,.75)'; g.font = '600 22px system-ui, sans-serif';
+  g.fillText('Photo d’exemple — importez la photo de votre bâtiment', 24, SP.H-22);
+  return cv;
+}
+
+/* ------------------------------------------------------------------ */
+/* Moteur 3D                                                           */
+/* ------------------------------------------------------------------ */
+const canvas = $('#c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, premultipliedAlpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x07090b, 1);
+renderer.xr.enabled = true;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 500);
+const PH = 16;              // hauteur de la photo, en mètres
+let PW = 16*1.6;
+
+/* -- textures procédurales -- */
+function valueNoise(seed){
+  const p = new Uint8Array(512); const perm = [...Array(256).keys()];
+  let s = seed; const r = () => (s = (s*16807)%2147483647)/2147483647;
+  for(let i=255;i>0;i--){ const j = Math.floor(r()*(i+1)); [perm[i],perm[j]]=[perm[j],perm[i]]; }
+  for(let i=0;i<512;i++) p[i]=perm[i&255];
+  const vals = new Float32Array(256).map(()=>r());
+  const sm = t => t*t*(3-2*t);
+  return (x,y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x-xi, yf = y-yi;
+    const a = vals[p[(xi&255)+p[yi&255]]], b = vals[p[((xi+1)&255)+p[yi&255]]];
+    const c = vals[p[(xi&255)+p[(yi+1)&255]]], d = vals[p[((xi+1)&255)+p[(yi+1)&255]]];
+    const u = sm(xf), v = sm(yf);
+    return lerp(lerp(a,b,u), lerp(c,d,u), v);
+  };
+}
+function atlas(kind){
+  const N = 128, cv = document.createElement('canvas'); cv.width = cv.height = N*2;
+  const g = cv.getContext('2d'); const img = g.createImageData(N*2, N*2);
+  for(let cell=0; cell<4; cell++){
+    const nz = valueNoise(7 + cell*31 + (kind==='fire'?500:0));
+    const ox = (cell%2)*N, oy = Math.floor(cell/2)*N;
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+      const u = x/N-.5, v = y/N-.5;
+      let fb = 0, amp = .5, fr = 3;
+      for(let o=0;o<5;o++){ fb += amp*nz(u*fr+cell*3.1, v*fr+cell*1.7); amp*=.5; fr*=2.05; }
+      const i = ((oy+y)*N*2 + ox + x)*4;
+      if(kind==='smoke'){
+        const d = Math.sqrt(u*u+v*v)*2;
+        let a = clamp(1 - d, 0, 1); a = Math.pow(a, 1.15);
+        a = clamp(a*(0.35 + fb*1.35) - 0.12, 0, 1);
+        const shade = clamp(0.62 + (0.5 - (y/N))*0.55 + (fb-.5)*0.35, 0, 1); // éclairé par le dessus
+        img.data[i]=img.data[i+1]=img.data[i+2]=Math.round(shade*255);
+        img.data[i+3]=Math.round(a*255);
+      } else {
+        const d = Math.sqrt(u*u*2.2 + (v+.08)*(v+.08)*1.1)*2;
+        let a = clamp(1-d,0,1); a = a*a;
+        a = clamp(a*(0.45 + fb*1.25) - 0.08, 0, 1);
+        const core = clamp(1 - d*1.3, 0, 1);
+        img.data[i]=255; img.data[i+1]=Math.round(lerp(190,255,core)); img.data[i+2]=Math.round(lerp(120,240,core*core));
+        img.data[i+3]=Math.round(a*255);
+      }
+    }
+  }
+  g.putImageData(img,0,0);
+  const t = new THREE.CanvasTexture(cv); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
+  return t;
+}
+function gradTex(draw, w=128, h=128){
+  const cv = document.createElement('canvas'); cv.width=w; cv.height=h; draw(cv.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(cv); return t;
+}
+const TEX = {
+  smoke: atlas('smoke'),
+  fire: atlas('fire'),
+  glow: gradTex((g,w,h)=>{ const gr=g.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2); gr.addColorStop(0,'rgba(255,170,80,1)'); gr.addColorStop(.35,'rgba(255,110,30,.45)'); gr.addColorStop(1,'rgba(255,80,10,0)'); g.fillStyle=gr; g.fillRect(0,0,w,h); }),
+  soot: gradTex((g,w,h)=>{
+    const nz = valueNoise(99);
+    const img = g.createImageData(w,h);
+    for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+      const u = x/w-.5, v = 1 - y/h; // v=0 bas (haut de la fenêtre)
+      const spread = 0.28 + v*0.22;
+      let a = clamp(1 - Math.abs(u)/spread, 0, 1) * Math.pow(1 - v, 0.7);
+      a *= 0.55 + nz(x/14, y/10)*0.7;
+      const i = (y*w+x)*4; img.data[i]=18; img.data[i+1]=15; img.data[i+2]=13; img.data[i+3]=Math.round(clamp(a,0,1)*255);
+    }
+    g.putImageData(img,0,0);
+  }, 128, 160),
+};
+
+/* -- système de particules (points triés) -- */
+const VS = `
+attribute float aSize; attribute float aAlpha; attribute vec3 aColor; attribute float aRot; attribute float aVar;
+uniform float uHalfH;
+varying float vA; varying vec3 vC; varying float vR; varying float vV;
+void main(){
+  vec4 mv = modelViewMatrix * vec4(position,1.0);
+  gl_Position = projectionMatrix * mv;
+  gl_PointSize = aSize * projectionMatrix[1][1] * uHalfH / max(0.05, -mv.z);
+  vA = aAlpha; vC = aColor; vR = aRot; vV = aVar;
+}`;
+const FS = `
+uniform sampler2D uTex;
+varying float vA; varying vec3 vC; varying float vR; varying float vV;
+void main(){
+  vec2 p = gl_PointCoord - 0.5;
+  float c = cos(vR), s = sin(vR);
+  p = vec2(c*p.x - s*p.y, s*p.x + c*p.y) + 0.5;
+  p = clamp(p, 0.004, 0.996);
+  vec2 cell = vec2(mod(vV, 2.0), floor(vV / 2.0));
+  vec4 t = texture2D(uTex, (cell + p) * 0.5);
+  float a = t.a * vA;
+  if(a < 0.003) discard;
+  gl_FragColor = vec4(vC * t.rgb * a, a);
+}`;
+class Pool{
+  constructor(max, tex, additive, order){
+    this.max = max; this.L = [];
+    const g = this.g = new THREE.BufferGeometry();
+    const A = (n) => { const a = new THREE.BufferAttribute(new Float32Array(max*n), n); a.setUsage(THREE.DynamicDrawUsage); return a; };
+    this.aPos = A(3); this.aCol = A(3); this.aAl = A(1); this.aSz = A(1); this.aRot = A(1); this.aVar = A(1);
+    g.setAttribute('position', this.aPos); g.setAttribute('aColor', this.aCol); g.setAttribute('aAlpha', this.aAl);
+    g.setAttribute('aSize', this.aSz); g.setAttribute('aRot', this.aRot); g.setAttribute('aVar', this.aVar);
+    this.mat = new THREE.ShaderMaterial({
+      uniforms:{uTex:{value:tex}, uHalfH:{value:400}}, vertexShader:VS, fragmentShader:FS,
+      transparent:true, depthWrite:false, premultipliedAlpha:true,
+      blending: additive ? THREE.AdditiveBlending : THREE.CustomBlending,
+      blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+    });
+    if(additive){ this.mat.blending = THREE.CustomBlending; this.mat.blendSrc = THREE.OneFactor; this.mat.blendDst = THREE.OneFactor; }
+    this.pts = new THREE.Points(g, this.mat); this.pts.frustumCulled = false; this.pts.renderOrder = order;
+    scene.add(this.pts);
+  }
+  add(p){ if(this.L.length < this.max){ this.L.push(p); return true; } return false; }
+  flush(sort){
+    const L = this.L;
+    if(sort){
+      const cp = camWorld, cd = camDir;
+      for(const p of L) p.d = (p.x-cp.x)*cd.x + (p.y-cp.y)*cd.y + (p.z-cp.z)*cd.z;
+      L.sort((a,b) => b.d - a.d);
+    }
+    const P = this.aPos.array, C = this.aCol.array, Al = this.aAl.array, S = this.aSz.array, R = this.aRot.array, V = this.aVar.array;
+    for(let i=0;i<L.length;i++){
+      const p = L[i];
+      P[i*3]=p.x; P[i*3+1]=p.y; P[i*3+2]=p.z;
+      C[i*3]=p.cr; C[i*3+1]=p.cg; C[i*3+2]=p.cb;
+      Al[i]=p.a; S[i]=p.s; R[i]=p.r; V[i]=p.v;
+    }
+    for(const a of [this.aPos,this.aCol,this.aAl,this.aSz,this.aRot,this.aVar]) a.needsUpdate = true;
+    this.g.setDrawRange(0, L.length);
+  }
+}
+const camWorld = new THREE.Vector3(), camDir = new THREE.Vector3();
+const SMOKE = new Pool(4200, TEX.smoke, false, 5);
+const FIRE = new Pool(3200, TEX.fire, true, 6);
+
+/* -- photo -- */
+const photoMat = new THREE.MeshBasicMaterial({color:0xffffff, depthWrite:false});
+const photoMesh = new THREE.Mesh(new THREE.PlaneGeometry(1,1), photoMat);
+photoMesh.renderOrder = -10; scene.add(photoMesh);
+let photoAspect = 1.6;
+function setPhoto(url){
+  photoURL = url; photoVer++;
+  const apply = (tex, aspect) => {
+    if(photoMat.map) photoMat.map.dispose();
+    tex.colorSpace = THREE.SRGBColorSpace; photoMat.map = tex; photoMat.needsUpdate = true;
+    photoAspect = aspect; PW = PH*aspect; photoMesh.scale.set(PW, PH, 1);
+    resize(); layoutAll();
+  };
+  if(!url){ const cv = paintSample(); apply(new THREE.CanvasTexture(cv), cv.width/cv.height); return; }
+  const img = new Image();
+  img.onload = () => { const t = new THREE.Texture(img); t.needsUpdate = true; apply(t, img.width/img.height); };
+  img.src = url;
+}
+
+/* -- victimes -- */
+const VG = {
+  torso: new THREE.CapsuleGeometry(0.17, 0.36, 4, 10),
+  head: new THREE.SphereGeometry(0.105, 16, 12),
+  hair: new THREE.SphereGeometry(0.112, 16, 10, 0, Math.PI*2, 0, Math.PI*0.55),
+  arm: new THREE.CapsuleGeometry(0.048, 0.46, 3, 8),
+  leg: new THREE.CapsuleGeometry(0.068, 0.72, 3, 8),
+};
+const SKIN = ['#e8bfa0','#c9936c','#8d5a3b','#f1cdb3'], CLOTH = ['#3b5f8a','#a33a35','#e2ddd0','#5b6b3a','#2e2e33','#c98a2b','#6b4c8a'], PANTS = ['#26303b','#3a3a3a','#4b3b2b','#1f2a44'];
+const matCache = {};
+const lam = c => matCache[c] || (matCache[c] = new THREE.MeshLambertMaterial({color:c}));
+function makeVictim(seed){
+  let s = seed*9301+49297; const r = () => (s = (s*16807)%2147483647)/2147483647;
+  const pick = a => a[Math.floor(r()*a.length)];
+  const g = new THREE.Group();
+  const cloth = lam(pick(CLOTH)), skin = lam(pick(SKIN)), pants = lam(pick(PANTS)), hairM = lam(pick(['#1c1612','#3b2a1d','#6b4a2b','#b9b2a5','#d9b779']));
+  for(const sx of [-1,1]){ const l = new THREE.Mesh(VG.leg, pants); l.position.set(sx*0.09, 0.47, 0); g.add(l); }
+  const hips = new THREE.Group(); hips.position.y = 0.9; g.add(hips);
+  const torso = new THREE.Mesh(VG.torso, cloth); torso.position.y = 0.32; torso.scale.set(1,1,0.72); hips.add(torso);
+  const head = new THREE.Mesh(VG.head, skin); head.position.y = 0.72; hips.add(head);
+  const hair = new THREE.Mesh(VG.hair, hairM); hair.position.set(0, 0.735, -0.012); hair.rotation.x = -0.35; hips.add(hair);
+  const arms = [];
+  for(const sx of [-1,1]){
+    const sh = new THREE.Group(); sh.position.set(sx*0.215, 0.5, 0); hips.add(sh);
+    const a = new THREE.Mesh(VG.arm, cloth); a.position.y = -0.27; sh.add(a);
+    const hand = new THREE.Mesh(VG.head, skin); hand.scale.setScalar(0.42); hand.position.y = -0.53; sh.add(hand);
+    arms.push(sh);
+  }
+  return {g, hips, armL:arms[0], armR:arms[1], ph:r()*6.28, sp:5.5+r()*2.5};
+}
+
+/* -- occultation : un plan invisible qui masque ce qui se trouve « dans » le mur -- */
+const occMat = new THREE.MeshBasicMaterial({colorWrite:false, side:THREE.DoubleSide});
+function occGeo(mode, w, h, k){
+  const m = 1.25*k;
+  const sh = new THREE.Shape();
+  if(mode==='toit'){
+    sh.moveTo(-w/2-m, h/2); sh.lineTo(w/2+m, h/2); sh.lineTo(w/2+m, h/2-1.6*k); sh.lineTo(-w/2-m, h/2-1.6*k); sh.closePath();
+    return new THREE.ShapeGeometry(sh);
+  }
+  sh.moveTo(-w/2-m, -h/2-m); sh.lineTo(w/2+m, -h/2-m); sh.lineTo(w/2+m, h/2+m); sh.lineTo(-w/2-m, h/2+m); sh.closePath();
+  const hole = new THREE.Path(); hole.moveTo(-w/2,-h/2); hole.lineTo(-w/2,h/2); hole.lineTo(w/2,h/2); hole.lineTo(w/2,-h/2); hole.closePath();
+  sh.holes.push(hole);
+  return new THREE.ShapeGeometry(sh);
+}
+
+/* -- fond de la pièce (lueur, obscurité) -- */
+const FILL_VS = `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);} `;
+const FILL_FS = `
+uniform float uDark; uniform float uGlow; uniform float uTime; uniform vec3 uTint;
+varying vec2 vUv;
+float h(vec2 p){ return fract(sin(dot(p, vec2(41.3,289.1)))*43758.5); }
+float n(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+1.),f.x), f.y); }
+void main(){
+  float fl = n(vec2(vUv.x*3.0, vUv.y*2.0 - uTime*1.7)) * 0.6 + n(vec2(vUv.x*7.0+3.0, vUv.y*5.0 - uTime*3.1))*0.4;
+  float g = uGlow * (0.55 + 0.45*fl) * (0.55 + 0.75*(1.0 - vUv.y));
+  vec3 col = uTint*(1.0-uGlow) + vec3(1.0, 0.42, 0.1) * g * 1.6 + vec3(1.0,0.8,0.4)*pow(g,3.0);
+  float a = clamp(max(uDark, g*1.2), 0.0, 1.0);
+  gl_FragColor = vec4(col * a, a);
+}`;
+
+/* -- runtime d'une vignette -- */
+const RT = new Map();
+function ensureRT(m){
+  let R = RT.get(m.id);
+  if(R) return R;
+  const g = new THREE.Group(); scene.add(g);
+  const fillMat = new THREE.ShaderMaterial({uniforms:{uDark:{value:0}, uGlow:{value:0}, uTime:{value:0}, uTint:{value:new THREE.Color(0.05,0.045,0.04)}}, vertexShader:FILL_VS, fragmentShader:FILL_FS, transparent:true, depthWrite:false, premultipliedAlpha:true, blending:THREE.CustomBlending, blendSrc:THREE.OneFactor, blendDst:THREE.OneMinusSrcAlphaFactor});
+  const fill = new THREE.Mesh(new THREE.PlaneGeometry(1,1), fillMat); fill.renderOrder = 1; g.add(fill);
+  const sootMat = new THREE.MeshBasicMaterial({map:TEX.soot, transparent:true, opacity:0, depthWrite:false});
+  const soot = new THREE.Mesh(new THREE.PlaneGeometry(1,1), sootMat); soot.renderOrder = 2; g.add(soot);
+  const glowMat = new THREE.MeshBasicMaterial({map:TEX.glow, transparent:true, opacity:0, depthWrite:false, blending:THREE.AdditiveBlending});
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(1,1), glowMat); glow.renderOrder = 7; g.add(glow);
+  const occ = new THREE.Mesh(new THREE.BufferGeometry(), occMat); occ.renderOrder = -1; g.add(occ);
+  const vic = new THREE.Group(); g.add(vic);
+  R = {id:m.id, g, fill, soot, glow, occ, vic, figs:[], vkey:'', occKey:'',
+       cur:{smoke:m.p.smoke, dark:m.p.dark, pulse:m.p.pulse, fire:m.p.fire, vis:m.visible?1:0},
+       sootAcc: m.p.soot && m.p.fire>25 ? 0.6 : 0, acc:{fi:0,fo:0,sm:0,sf:0}, ph:rnd()*6.28,
+       o:new THREE.Vector3(), n:new THREE.Vector3(0,0,1), rt:new THREE.Vector3(1,0,0), w:1.3, h:1.5, k:1, placed:true};
+  RT.set(m.id, R);
+  return R;
+}
+function dropRT(id){
+  const R = RT.get(id); if(!R) return;
+  scene.remove(R.g);
+  R.g.traverse(o => { if(o.geometry && !Object.values(VG).includes(o.geometry) && !o.geometry.userData.shared) o.geometry.dispose(); });
+  R.fill.material.dispose(); R.soot.material.dispose(); R.glow.material.dispose(); if(R.media) R.media.material.dispose();
+  RT.delete(id);
+}
+function kOf(m, w, h){
+  if(m.mode==='toit') return xrActive ? 1 : 1;
+  if(m.mode==='porte' || m.mode==='balcon') return clamp(h/2.3, 0.3, 4);
+  return clamp((w/1.3 + h/1.55)/2, 0.3, 4);
+}
+function layout(m){
+  const R = ensureRT(m);
+  let w, h;
+  if(xrActive){
+    if(!m.xr){ R.placed = false; R.g.visible = false; return; }
+    if(carry && carry.id===m.id) { R.g.visible = true; }
+    R.placed = true; R.g.visible = true;
+    w = m.xr.w; h = m.xr.h;
+    R.g.position.fromArray(m.xr.p); R.g.rotation.set(0, m.xr.yaw, 0);
+  } else {
+    R.placed = true; R.g.visible = true;
+    const r = m.rect; w = r.w*PW; h = r.h*PH;
+    R.g.position.set((r.u + r.w/2 - .5)*PW, (.5 - r.v - r.h/2)*PH, 0); R.g.rotation.set(0,0,0);
+  }
+  R.w = w; R.h = h; R.k = kOf(m, w, h);
+  R.g.updateMatrixWorld();
+  R.o.copy(R.g.position); const yaw = R.g.rotation.y;
+  R.n.set(Math.sin(yaw), 0, Math.cos(yaw)); R.rt.set(Math.cos(yaw), 0, -Math.sin(yaw));
+  const k = R.k;
+  const okey = [m.mode, w.toFixed(3), h.toFixed(3)].join('|');
+  if(okey !== R.occKey){
+    R.occKey = okey; R.occ.geometry.dispose();
+    R.occ.geometry = (m.mode==='balcon') ? new THREE.BufferGeometry() : occGeo(m.mode, w, h, k);
+  }
+  const depth = m.mode==='toit' ? 0 : 1.7*k;
+  R.fill.visible = m.mode!=='toit';
+  R.fill.position.set(0, 0, -depth); R.fill.scale.set(w*1.9, h*1.9, 1);
+  R.soot.scale.set(Math.max(w*1.5, 1.8*k), Math.max(h*1.9, 2.6*k), 1);
+  R.soot.position.set(0, h/2 + R.soot.scale.y/2 - 0.08*k, 0.012);
+  R.glow.scale.set(Math.max(w,1.3*k)*4.2, Math.max(w,1.3*k)*4.2, 1); R.glow.position.set(0, h*0.35, 0.03*k);
+  rebuildVictims(m, R);
+  if(MEDIA.has(m.id)) { applyMedia(m); }
+}
+function rebuildVictims(m, R){
+  const n = m.p.victims|0, key = [n, m.mode, m.id, R.k.toFixed(2), R.w.toFixed(2), R.h.toFixed(2)].join('|');
+  if(key === R.vkey) return;
+  R.vkey = key;
+  for(const f of R.figs) R.vic.remove(f.g);
+  R.figs = [];
+  const k = R.k, span = Math.min(R.w*0.75, (n-1)*0.55*k);
+  for(let i=0;i<n;i++){
+    const f = makeVictim(hashStr(m.id)+i*17);
+    f.g.scale.setScalar(k);
+    const x = n===1 ? 0 : -span/2 + span*i/(n-1);
+    if(m.mode==='balcon') f.g.position.set(x, -R.h/2 + 0.02*k, 0.55*k);
+    else if(m.mode==='porte') f.g.position.set(x, -R.h/2, -0.25*k);
+    else f.g.position.set(x, -R.h/2 - 0.95*k, -0.55*k);
+    R.vic.add(f.g); R.figs.push(f);
+  }
+}
+function hashStr(s){ let h = 0; for(const c of s) h = (h*31 + c.charCodeAt(0))|0; return Math.abs(h)%100000; }
+function layoutAll(){ for(const m of cfg.modules) layout(m); for(const id of [...RT.keys()]) if(!cfg.modules.find(m=>m.id===id)) dropRT(id); }
+
+/* -- séquences réalistes importées (vidéo / image) affichées en panneau orienté vers l'observateur -- */
+const MEDIA = new Map(); // id -> {tex, el, aspect, name}
+const MEDIA_FS = `
+uniform sampler2D map; uniform float mode; uniform float op; uniform float shade;
+varying vec2 vUv;
+void main(){
+  vec4 c = texture2D(map, vUv);
+  if(mode > 0.5 && mode < 1.5){ gl_FragColor = vec4(c.rgb * op, 0.0); return; }        // fond noir : ajout lumineux
+  float a = c.a;
+  if(mode > 1.5){ float g = c.g - max(c.r, c.b); a *= 1.0 - smoothstep(0.06, 0.22, g); c.g = min(c.g, max(c.r, c.b) + 0.03); }
+  a *= op; if(a < 0.01) discard;
+  gl_FragColor = vec4(c.rgb * shade * a, a);
+}`;
+const mediaGeo = new THREE.PlaneGeometry(1,1).translate(0, 0.5, 0); mediaGeo.userData.shared = true;
+function setMedia(m, file){
+  const old = MEDIA.get(m.id); if(old){ old.tex.dispose(); if(old.el && old.el.pause) old.el.pause(); if(old.url) URL.revokeObjectURL(old.url); MEDIA.delete(m.id); }
+  if(!file){ applyMedia(m); return; }
+  const url = URL.createObjectURL(file);
+  const done = (el, tex, aspect) => { tex.colorSpace = THREE.NoColorSpace; MEDIA.set(m.id, {tex, el, aspect, url, name:file.name}); applyMedia(m); renderAll(); };
+  if(file.type.startsWith('video')){
+    const v = document.createElement('video'); v.src = url; v.muted = true; v.loop = true; v.playsInline = true; v.crossOrigin = 'anonymous';
+    v.onloadeddata = () => { v.play().catch(()=>{}); done(v, new THREE.VideoTexture(v), v.videoWidth/v.videoHeight || 1); };
+    v.onerror = () => toast('Cette vidéo ne peut pas être lue sur cet appareil.');
+  } else {
+    const img = new Image(); img.onload = () => { const t = new THREE.Texture(img); t.needsUpdate = true; done(img, t, img.width/img.height); }; img.src = url;
+  }
+}
+function applyMedia(m){
+  const R = RT.get(m.id); if(!R) return;
+  const md = MEDIA.get(m.id);
+  if(!md){ if(R.media){ R.g.remove(R.media); R.media.material.dispose(); R.media = null; } return; }
+  if(!R.media){
+    const mat = new THREE.ShaderMaterial({uniforms:{map:{value:md.tex}, mode:{value:0}, op:{value:1}, shade:{value:1}}, vertexShader:FILL_VS, fragmentShader:MEDIA_FS, transparent:true, depthWrite:false, premultipliedAlpha:true, blending:THREE.CustomBlending, blendSrc:THREE.OneFactor, blendDst:THREE.OneMinusSrcAlphaFactor});
+    R.media = new THREE.Mesh(mediaGeo, mat); R.media.renderOrder = 3; R.g.add(R.media);
+  }
+  R.media.material.uniforms.map.value = md.tex;
+  placeMedia(m, R);
+}
+function placeMedia(m, R){
+  const md = MEDIA.get(m.id); if(!R.media || !md) return;
+  const k = R.k, h = m.p.mediaH*k;
+  R.media.scale.set(h*md.aspect, h, 1);
+  const front = m.mode==='balcon' || m.p.mediaKey==='noir';
+  R.media.position.set(0, -R.h/2 + m.p.mediaY*k, front ? 0.45*k : -0.5*k);
+  R.media.material.uniforms.mode.value = {alpha:0, noir:1, vert:2}[m.p.mediaKey] ?? 0;
+}
+
+/* -- ambiance -- */
+const AMB = {jour:{amb:1, photo:1, glow:0.8, clear:0x07090b}, crepuscule:{amb:0.62, photo:0.62, glow:1.1, clear:0x07090b}, nuit:{amb:0.32, photo:0.3, glow:1.6, clear:0x050608}};
+scene.add(new THREE.HemisphereLight(0xffffff, 0x666055, 1.1));
+const sunL = new THREE.DirectionalLight(0xffffff, 1.2); sunL.position.set(3,8,10); scene.add(sunL);
+function applyAmbience(){
+  const A = AMB[cfg.global.time] || AMB.jour;
+  const tint = cfg.global.time==='nuit' ? [0.55,0.62,0.85] : cfg.global.time==='crepuscule' ? [1,0.82,0.72] : [1,1,1];
+  photoMat.color.setRGB(A.photo*tint[0], A.photo*tint[1], A.photo*tint[2]);
+  scene.children.filter(o=>o.isHemisphereLight)[0].intensity = 1.1*A.amb + 0.1;
+  sunL.intensity = 1.2*A.amb;
+}
+
+/* -- émission & mise à jour des particules -- */
+const V3 = THREE.Vector3;
+const tmp = new V3();
+function spawn(pool, R, lx, ly, lz, vx, vy, vz, o){
+  const x = R.o.x + R.rt.x*lx + R.n.x*lz, y = R.o.y + ly, z = R.o.z + R.rt.z*lx + R.n.z*lz;
+  const p = {x, y, z, vx:R.rt.x*vx + R.n.x*vz, vy, vz:R.rt.z*vx + R.n.z*vz, age:0, R, r:0, v:(rnd()*4)|0, cr:1, cg:1, cb:1, a:0, s:0, ...o};
+  pool.add(p);
+}
+function emitModule(m, R, dt, t){
+  if(!R.placed) return;
+  const G = cfg.global, draft = 0.5 + G.draft/100, k = R.k, w = R.w, h = R.h;
+  const vis = R.cur.vis;
+  if(vis < 0.01) return;
+  const F = R.cur.fire * vis;
+  const fromFire = F > 25 ? (F-12)*0.85 : 0;
+  const S = Math.max(R.cur.smoke * vis, fromFire);
+  const D = F > 25 ? Math.max(R.cur.dark, 78) : R.cur.dark;
+  const pulse = R.cur.pulse/100;
+  const pm = 1 + pulse*(2.4*Math.pow(Math.max(0, Math.sin(t*2.3 + R.ph)), 3) - 0.75);
+  const wScale = clamp(w/(1.3*k), 0.4, 12);
+  const glowAmt = clamp(F/55, 0, 1);
+  const Dn = D/100;
+  const c0 = lerp(0.88, 0.05, Math.pow(Dn, 0.8)), c1 = lerp(0.93, 0.24, Dn);
+  const a0 = lerp(0.32, 0.82, Dn);
+  const big = m.mode==='toit';
+  const fenetre = m.mode!=='toit';
+
+  // flammes intérieures (visibles à travers l'ouverture)
+  if(F > 0 && fenetre){
+    R.acc.fi += (10 + F*0.55) * wScale * draft * dt;
+    while(R.acc.fi >= 1){ R.acc.fi--;
+      spawn(FIRE, R, (rnd()-.5)*w*1.15, -h/2 - 0.2*k + rnd()*h*0.55, -0.35*k - rnd()*1.2*k, (rnd()-.5)*0.3*k, (0.6+rnd()*0.9)*k, rnd()*0.3*k,
+        {life:0.45+rnd()*0.45, s0:(0.45+rnd()*0.4)*k*(0.7+F/120), a0:0.6, top:h/2, kind:'in', r:(rnd()-.5)*0.5});
+    }
+  }
+  // flammes sortantes
+  if(F > 25 && fenetre){
+    const f = (F-25)/75;
+    R.acc.fo += (40 + f*210) * wScale * draft * dt;
+    while(R.acc.fo >= 1){ R.acc.fo--;
+      spawn(FIRE, R, (rnd()-.5)*w*0.85, h*(0.02 + rnd()*0.46) - h*0.0, -0.25*k + rnd()*0.2*k,
+        (rnd()-.5)*0.4*k, (0.4+rnd()*0.9)*k, (0.8 + rnd()*0.9 + f*1.4)*k*draft,
+        {life:(0.55+rnd()*0.5)*(0.75+f*0.9), s0:(0.55+rnd()*0.5)*k*(0.75+f*0.8), a0:0.5+rnd()*0.25, top:h/2, kind:'out', r:(rnd()-.5)*0.6});
+    }
+  }
+  // fumée
+  if(S > 0.5){
+    const rate = (S/100) * 44 * wScale * draft * pm * (m.p.exit==='fuites' && fenetre ? 0.75 : 1) * (big ? 1.5 : 1);
+    R.acc.sm += rate * dt;
+    while(R.acc.sm >= 1){ R.acc.sm--;
+      const base = {life:7+rnd()*4.5, a0:a0*(0.8+rnd()*0.4), c0, c1, glow: glowAmt*(0.7+rnd()*0.5), top:h/2, kind:'smoke', r:(rnd()-.5)*0.8, vr:(rnd()-.5)*0.25, buoy:(0.75 + Dn*0.6)*k*draft};
+      if(big){
+        spawn(SMOKE, R, (rnd()-.5)*w*0.95, h/2 - 0.1*k, -0.5*k - rnd()*3*k, (rnd()-.5)*0.3, (0.9+rnd()*0.9)*k*draft, (rnd()-.3)*0.4*k,
+          {...base, s0:(0.9+rnd()*0.6)*k, s1:(5+rnd()*4)*k, life:9+rnd()*4});
+      } else if(m.p.exit==='fuites' && F<=25){
+        const e = rnd();
+        let lx, ly;
+        if(e < 0.62){ lx = (rnd()-.5)*w; ly = h/2 + 0.02*k; }
+        else { lx = (e<0.81?-1:1)*(w/2 + 0.02*k); ly = h*(rnd()-.2); }
+        spawn(SMOKE, R, lx, ly, 0.04*k, (rnd()-.5)*0.15*k, (0.15+rnd()*0.3)*k, (0.08+rnd()*0.22)*k*pm,
+          {...base, s0:(0.16+rnd()*0.14)*k, s1:(1.6+rnd()*1.6)*k, a0:base.a0*0.75, life:5.5+rnd()*3});
+      } else {
+        const out = (0.35 + rnd()*0.65 + Dn*0.35) * k * draft * (0.6 + pm*0.4);
+        const yb = m.mode==='balcon' ? h*0.05 : h*0.08;
+        spawn(SMOKE, R, (rnd()-.5)*w*0.85, yb + rnd()*(h/2 - yb)*0.95, -0.25*k + rnd()*0.22*k, (rnd()-.5)*0.25*k, (0.2+rnd()*0.4)*k, out,
+          {...base, s0:(0.45+rnd()*0.35)*k*Math.min(1.4, w/(1.3*k)*0.9+0.2), s1:(3.4+rnd()*3.4)*k});
+      }
+    }
+  }
+}
+const FIRE_RAMP = [[0,1,0.93,0.72],[0.22,1,0.62,0.2],[0.55,0.9,0.28,0.06],[1,0.3,0.06,0.02]];
+function ramp(t){
+  for(let i=1;i<FIRE_RAMP.length;i++){ const b = FIRE_RAMP[i]; if(t<=b[0]){ const a = FIRE_RAMP[i-1], u = (t-a[0])/(b[0]-a[0]); return [lerp(a[1],b[1],u), lerp(a[2],b[2],u), lerp(a[3],b[3],u)]; } }
+  return FIRE_RAMP[3].slice(1);
+}
+function updateParticles(dt, t){
+  const G = cfg.global, A = AMB[G.time] || AMB.jour;
+  const windX = (G.wind/100) * 2.4;
+  // fumée
+  const L = SMOKE.L;
+  for(let i=L.length-1;i>=0;i--){
+    const p = L[i]; p.age += dt;
+    if(p.age >= p.life || !RT.has(p.R.id)){ L[i] = L[L.length-1]; L.pop(); continue; }
+    const R = p.R, k = R.k, tt = p.age/p.life;
+    p.vy += p.buoy * (1 - tt) * dt;
+    const dragH = 1 - 0.55*dt, dragV = 1 - 0.22*dt;
+    p.vx *= dragH; p.vz *= dragH; p.vy *= dragV;
+    const ly = p.y - R.o.y;
+    const rise = clamp((ly - p.top) / (3*k), 0, 1);
+    p.vx += R.rt.x * windX * rise * dt * 0.9; p.vz += R.rt.z * windX * rise * dt * 0.9;
+    const tw = Math.sin(t*0.9 + p.v*1.7 + p.y*0.6)*0.35*k, tw2 = Math.cos(t*0.7 + p.v + p.y*0.45)*0.2*k;
+    p.vx += (R.rt.x*tw + R.n.x*tw2)*dt; p.vz += (R.rt.z*tw + R.n.z*tw2)*dt;
+    p.x += p.vx*dt; p.y += p.vy*dt; p.z += p.vz*dt;
+    p.s = p.s0 + (p.s1 - p.s0) * (1 - Math.pow(1-tt, 2.2));
+    // la fumée longe la façade au-dessus de l'ouverture
+    if(ly > p.top){
+      const lz = (p.x-R.o.x)*R.n.x + (p.z-R.o.z)*R.n.z, minZ = p.s*0.18;
+      if(lz < minZ){ const d = minZ - lz; p.x += R.n.x*d; p.z += R.n.z*d; const vn = p.vx*R.n.x + p.vz*R.n.z; if(vn<0){ p.vx -= R.n.x*vn; p.vz -= R.n.z*vn; } }
+    }
+    p.r += (p.vr||0)*dt;
+    const c = lerp(p.c0, p.c1, tt) * A.amb;
+    const gl = p.glow * Math.max(0, 1 - p.age/2.2) * A.glow;
+    p.cr = c + gl*0.55; p.cg = c + gl*0.22; p.cb = c + gl*0.06;
+    p.a = p.a0 * Math.min(1, p.age/0.5) * Math.pow(1-tt, 1.35);
+  }
+  SMOKE.flush(true);
+  // feu
+  const F = FIRE.L;
+  for(let i=F.length-1;i>=0;i--){
+    const p = F[i]; p.age += dt;
+    if(p.age >= p.life || !RT.has(p.R.id)){ F[i] = F[F.length-1]; F.pop(); continue; }
+    const R = p.R, k = R.k, tt = p.age/p.life;
+    const draft = 0.5 + G.draft/100;
+    p.vy += 5.2*k*draft*dt;
+    const ly = p.y - R.o.y;
+    const lz = (p.x-R.o.x)*R.n.x + (p.z-R.o.z)*R.n.z;
+    const vn = p.vx*R.n.x + p.vz*R.n.z;
+    let dvn = -vn*2.4*dt;
+    if(p.kind==='out' && ly > p.top && lz > 0.25*k) dvn -= 2.2*k*dt;  // effet Coanda : la flamme se plaque à la façade
+    p.vx += R.n.x*dvn; p.vz += R.n.z*dvn;
+    p.vx += R.rt.x*windX*0.35*dt; p.vz += R.rt.z*windX*0.35*dt;
+    const tw = Math.sin(t*9 + p.v*2.1 + p.y*3.0)*0.9*k;
+    p.vx += R.rt.x*tw*dt; p.vz += R.rt.z*tw*dt;
+    p.x += p.vx*dt; p.y += p.vy*dt; p.z += p.vz*dt;
+    if(p.kind==='out' && ly > p.top){ const lz2 = (p.x-R.o.x)*R.n.x + (p.z-R.o.z)*R.n.z; if(lz2 < 0.06*k){ const d = 0.06*k - lz2; p.x += R.n.x*d; p.z += R.n.z*d; } }
+    const c = ramp(tt);
+    const fl = 0.85 + 0.15*Math.sin(t*23 + p.v*5);
+    const br = (cfg.global.time==='jour' ? 0.85 : 1.0) * fl;
+    p.cr = c[0]*br; p.cg = c[1]*br; p.cb = c[2]*br;
+    p.s = p.s0 * (0.65 + 0.7*Math.sin(Math.PI*Math.min(1, tt*1.15))) * (1 - 0.35*tt);
+    p.a = p.a0 * Math.min(1, p.age/0.07) * Math.pow(1-tt, 1.25);
+  }
+  FIRE.flush(false);
+}
+
+/* -- animation par vignette (valeurs qui évoluent progressivement) -- */
+function stepModule(m, R, dt, t){
+  const ease = (cur, tgt, tau) => cur + (tgt - cur) * (1 - Math.exp(-dt/tau));
+  R.cur.smoke = ease(R.cur.smoke, m.p.smoke, 2.6);
+  R.cur.dark = ease(R.cur.dark, m.p.dark, 3.2);
+  R.cur.pulse = ease(R.cur.pulse, m.p.pulse, 1.5);
+  R.cur.fire = ease(R.cur.fire, m.p.fire, m.p.fire > R.cur.fire ? 2.2 : 3.5);
+  R.cur.vis = ease(R.cur.vis, m.visible ? 1 : 0, 1.2);
+  const A = AMB[cfg.global.time] || AMB.jour;
+  const vis = R.cur.vis, F = R.cur.fire*vis;
+  if(m.p.soot && F > 25) R.sootAcc = Math.min(1, R.sootAcc + dt*(F/100)*0.05);
+  if(!m.p.soot) R.sootAcc = Math.max(0, R.sootAcc - dt*0.5);
+  const fl = 0.78 + 0.12*Math.sin(t*13+R.ph) + 0.1*Math.sin(t*31.7+R.ph*2);
+  const fillDark = {aucun:0, noircie:0.62, sombre:0.9}[m.p.fill] ?? 0;
+  const glowIn = clamp(F/35, 0, 1);
+  R.fill.material.uniforms.uDark.value = fillDark * vis;
+  R.fill.material.uniforms.uGlow.value = glowIn * fl * Math.min(1, A.glow) * vis;
+  R.fill.material.uniforms.uTime.value = t;
+  R.soot.material.opacity = R.sootAcc * 0.78 * vis;
+  R.glow.material.opacity = clamp((F-10)/70, 0, 1) * 0.55 * A.glow * fl * vis;
+  // victimes
+  const showV = vis > 0.5;
+  R.vic.visible = showV;
+  const shade = A.amb*0.8 + 0.2;
+  for(const f of R.figs){
+    const w = t*f.sp + f.ph, pose = m.p.pose;
+    f.hips.rotation.set(0,0,0); f.armL.rotation.set(0,0,0); f.armR.rotation.set(0,0,0);
+    if(pose==='appel'){
+      f.armR.rotation.z = 2.55 + 0.42*Math.sin(w); f.armL.rotation.z = -(2.35 + 0.42*Math.sin(w+1.4));
+      f.hips.rotation.z = 0.04*Math.sin(w*0.5);
+    } else if(pose==='penche'){
+      f.hips.rotation.x = m.mode==='balcon' ? 0.25 : 0.5;
+      f.armR.rotation.z = 2.2 + 0.5*Math.sin(w); f.armL.rotation.x = -1.0; f.armL.rotation.z = -0.15;
+    } else {
+      f.armL.rotation.z = -0.12; f.armR.rotation.z = 0.12; f.hips.rotation.z = 0.015*Math.sin(t*1.3+f.ph);
+    }
+  }
+  R._shade = shade;
+  if(R.media){
+    R.vic.visible = false;
+    tmp.copy(camWorld); R.g.worldToLocal(tmp);
+    R.media.rotation.y = Math.atan2(tmp.x - R.media.position.x, tmp.z - R.media.position.z);
+    R.media.material.uniforms.op.value = vis;
+    R.media.material.uniforms.shade.value = m.p.mediaKey==='noir' ? 1 : shade;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Caméra & redimensionnement                                          */
+/* ------------------------------------------------------------------ */
+const stage = $('#stage');
+function fitCamera(){
+  const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
+  camera.aspect = w/h;
+  const vfov = THREE.MathUtils.degToRad(camera.fov);
+  const dH = (PH/2) / Math.tan(vfov/2);
+  const dW = (PW/2) / (Math.tan(vfov/2) * camera.aspect);
+  const d = Math.max(dH, dW) * 1.02;
+  camera.position.set(0, 0, d); camera.lookAt(0,0,0); camera.updateProjectionMatrix();
+}
+function resize(){
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if(!w || !h) return;
+  if(!renderer.xr.isPresenting) renderer.setSize(w, h, false);
+  fitCamera(); renderOverlay();
+}
+new ResizeObserver(resize).observe(stage);
+
+/* ------------------------------------------------------------------ */
+/* Cadres d'édition sur l'image                                        */
+/* ------------------------------------------------------------------ */
+const overlay = $('#overlay');
+function worldToScreen(x, y){
+  tmp.set(x, y, 0).project(camera);
+  return [(tmp.x+1)/2*stage.clientWidth, (1-tmp.y)/2*stage.clientHeight];
+}
+function screenToPhoto(sx, sy){
+  const [x0,y0] = worldToScreen(-PW/2, PH/2), [x1,y1] = worldToScreen(PW/2, -PH/2);
+  return [(sx-x0)/(x1-x0), (sy-y0)/(y1-y0)];
+}
+function renderOverlay(){
+  if(xrActive || trainee){ overlay.innerHTML = ''; return; }
+  const [x0,y0] = worldToScreen(-PW/2, PH/2), [x1,y1] = worldToScreen(PW/2, -PH/2);
+  const sw = x1-x0, sh = y1-y0;
+  const have = new Set();
+  for(const m of cfg.modules){
+    have.add(m.id);
+    let el = overlay.querySelector(`[data-id="${m.id}"]`);
+    if(!el){
+      el = document.createElement('div'); el.className = 'mbox'; el.dataset.id = m.id;
+      el.innerHTML = '<span class="tag"></span><i class="hdl tl" data-h="tl"></i><i class="hdl tr" data-h="tr"></i><i class="hdl bl" data-h="bl"></i><i class="hdl br" data-h="br"></i>';
+      overlay.appendChild(el);
+    }
+    el.style.left = (x0 + m.rect.u*sw) + 'px'; el.style.top = (y0 + m.rect.v*sh) + 'px';
+    el.style.width = (m.rect.w*sw) + 'px'; el.style.height = (m.rect.h*sh) + 'px';
+    el.classList.toggle('sel', m.id===selId); el.classList.toggle('hid', !m.visible);
+    el.querySelector('.tag').textContent = m.name + (m.visible ? '' : ' (masquée)');
+  }
+  for(const el of [...overlay.children]) if(!have.has(el.dataset.id)) el.remove();
+}
+let drag = null;
+overlay.addEventListener('pointerdown', e => {
+  const box = e.target.closest('.mbox'); if(!box) return;
+  e.preventDefault(); e.stopPropagation();
+  const m = cfg.modules.find(x=>x.id===box.dataset.id); if(!m) return;
+  select(m.id);
+  const [pu, pv] = screenToPhoto(e.clientX - stage.getBoundingClientRect().left, e.clientY - stage.getBoundingClientRect().top);
+  drag = {m, h:e.target.dataset.h || null, pu, pv, r0:{...m.rect}};
+  box.setPointerCapture(e.pointerId);
+});
+overlay.addEventListener('pointermove', e => {
+  if(!drag) return;
+  const rect = stage.getBoundingClientRect();
+  const [pu, pv] = screenToPhoto(e.clientX-rect.left, e.clientY-rect.top);
+  const du = pu - drag.pu, dv = pv - drag.pv, r = drag.m.rect, r0 = drag.r0, minS = 0.008;
+  if(!drag.h){ r.u = clamp(r0.u+du, -r0.w*.5, 1-r0.w*.5); r.v = clamp(r0.v+dv, -r0.h*.5, 1-r0.h*.5); }
+  else {
+    if(drag.h.includes('l')){ const nu = Math.min(r0.u+du, r0.u+r0.w-minS); r.w = r0.w + (r0.u-nu); r.u = nu; }
+    if(drag.h.includes('r')){ r.w = Math.max(minS, r0.w+du); }
+    if(drag.h.includes('t')){ const nv = Math.min(r0.v+dv, r0.v+r0.h-minS); r.h = r0.h + (r0.v-nv); r.v = nv; }
+    if(drag.h.includes('b')){ r.h = Math.max(minS, r0.h+dv); }
+  }
+  layout(drag.m); renderOverlay(); changed(false);
+});
+const endDrag = () => { if(drag){ drag = null; changed(); } };
+overlay.addEventListener('pointerup', endDrag); overlay.addEventListener('pointercancel', endDrag);
+
+canvas.addEventListener('pointerdown', e => {
+  if(xrActive || trainee) return;
+  const rect = stage.getBoundingClientRect();
+  const [pu, pv] = screenToPhoto(e.clientX-rect.left, e.clientY-rect.top);
+  if(armed){
+    if(pu<0||pu>1||pv<0||pv>1){ toast('Touchez l’intérieur de la photo.'); return; }
+    const v = VIGNETTES.find(x=>x.key===armed);
+    const [mw, mh] = MODE_SIZE[v.mode];
+    const w = mw/PW, h = mh/PH;
+    const m = {id:uid(), type:v.key, name:v.label, mode:v.mode, visible:true, rect:{u:pu-w/2, v:pv-h/2, w, h}, xr:null, p:{...BASE, ...v.p}};
+    cfg.modules.push(m); layout(m); select(m.id); setArmed(null); changed();
+    toast('Ajustez les coins jaunes du cadre aux bords de la fenêtre.');
+  } else { select(null); }
+});
+
+/* ------------------------------------------------------------------ */
+/* Interface                                                           */
+/* ------------------------------------------------------------------ */
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('show'), 2600); }
+const tabs = ['vig','reg','pup'];
+function showTab(k){ for(const x of tabs){ $('#tab-'+x).setAttribute('aria-selected', x===k); $('#view-'+x).hidden = x!==k; } try{ localStorage.setItem(KEY+'.tab', k); }catch(e){} }
+for(const x of tabs) $('#tab-'+x).onclick = () => showTab(x);
+
+function setArmed(k){
+  armed = k;
+  for(const b of document.querySelectorAll('.vcard')) b.setAttribute('aria-pressed', b.dataset.k===k);
+  $('#armed').hidden = !k;
+  if(k) $('#armedTxt').textContent = `Touchez la fenêtre où poser « ${VIGNETTES.find(v=>v.key===k).label} »`;
+}
+$('#armedCancel').onclick = () => setArmed(null);
+
+// aperçus des vignettes (petits dessins)
+function drawThumb(cv, v){
+  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  g.fillStyle = '#cdbfa4'; g.fillRect(0,0,W,H);
+  const p = {...BASE, ...v.p};
+  let x = W*0.36, y = H*0.38, w = W*0.28, h = H*0.42;
+  if(v.mode==='balcon'||v.mode==='porte'){ y = H*0.28; h = H*0.58; }
+  if(v.mode==='toit'){ g.fillStyle='#8fb0cf'; g.fillRect(0,0,W,H*0.5); g.fillStyle='#cdbfa4'; g.fillRect(0,H*0.5,W,H*0.5); for(let i=0;i<4;i++){ g.fillStyle='#4a5864'; g.fillRect(W*(0.1+i*0.23), H*0.66, W*0.12, H*0.2);} }
+  else {
+    g.fillStyle = '#eee8dc'; g.fillRect(x-3,y-3,w+6,h+6);
+    g.fillStyle = p.fill==='sombre' ? '#14110f' : p.fill==='noircie' ? '#2a2420' : '#5b7385'; g.fillRect(x,y,w,h);
+    if(p.fire>0){ const gr = g.createLinearGradient(0,y+h,0,y); gr.addColorStop(0,'rgba(255,140,40,.95)'); gr.addColorStop(1,'rgba(255,90,20,.15)'); g.fillStyle=gr; g.fillRect(x,y,w,h); }
+  }
+  if(p.soot){ const gr = g.createLinearGradient(0,y,0,y-H*0.4); gr.addColorStop(0,'rgba(20,16,14,.75)'); gr.addColorStop(1,'rgba(20,16,14,0)'); g.fillStyle=gr; g.fillRect(x-4,y-H*0.4,w+8,H*0.4); }
+  if(p.fire>25){
+    const fh = H*(0.25 + p.fire/180);
+    for(let i=0;i<5;i++){ g.beginPath(); const fx = x + w*(0.15+i*0.18); g.moveTo(fx-w*0.14, y+h*0.45); g.quadraticCurveTo(fx, y-fh*0.2, fx+w*0.02*(i-2), y-fh*(0.6+0.1*(i%2))); g.quadraticCurveTo(fx+w*0.12, y, fx+w*0.14, y+h*0.45); g.fillStyle = i%2 ? 'rgba(255,190,70,.9)' : 'rgba(255,110,30,.85)'; g.fill(); }
+  }
+  if(p.smoke>0){
+    const sd = p.dark/100, col = Math.round(lerp(225, 30, sd));
+    const yy = v.mode==='toit' ? H*0.5 : (p.exit==='fuites' ? y : y+h*0.25);
+    for(let i=0;i<9;i++){
+      const r = W*(0.05 + i*0.022)*(p.smoke/60+0.4);
+      const cx = (v.mode==='toit' ? W*(0.2+i*0.07) : x+w/2 + Math.sin(i*1.3)*w*0.3 + i*W*0.012);
+      const cy = yy - i*H*0.075 - (p.fire>25?H*0.25:0);
+      g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fillStyle = `rgba(${col},${col},${col+3},${0.55 - i*0.03})`; g.fill();
+    }
+  }
+  for(let i=0;i<p.victims;i++){
+    const vx = x + w*(p.victims===1 ? 0.5 : 0.3 + i*0.4), vy = v.mode==='balcon' ? y+h*0.42 : y+h*0.35;
+    g.fillStyle = '#e2b796'; g.beginPath(); g.arc(vx, vy, H*0.055, 0, 7); g.fill();
+    g.fillStyle = '#3b6fa0'; g.fillRect(vx-W*0.04, vy+H*0.05, W*0.08, v.mode==='balcon'?H*0.3:H*0.18);
+    g.strokeStyle = '#3b6fa0'; g.lineWidth = 3; g.beginPath(); g.moveTo(vx+W*0.035, vy+H*0.08); g.lineTo(vx+W*0.08, vy-H*0.08); g.stroke();
+  }
+  if(v.mode==='balcon'){ g.strokeStyle='#2c3135'; g.lineWidth=2; g.strokeRect(x-W*0.08, y+h*0.6, w+W*0.16, h*0.4); for(let i=0;i<10;i++){ const bx = x-W*0.08 + i*(w+W*0.16)/9; g.beginPath(); g.moveTo(bx,y+h*0.6); g.lineTo(bx,y+h); g.stroke(); } g.fillStyle='#a79e8c'; g.fillRect(x-W*0.1, y+h, w+W*0.2, 4); }
+}
+function buildPalette(){
+  const vg = $('#vgrid'); vg.innerHTML = '';
+  for(const v of VIGNETTES){
+    const b = document.createElement('button'); b.className = 'vcard'; b.dataset.k = v.key; b.setAttribute('aria-pressed','false');
+    const cv = document.createElement('canvas'); cv.width = 160; cv.height = 100; drawThumb(cv, v);
+    b.append(cv); b.insertAdjacentHTML('beforeend', `<b>${v.label}</b><span>${v.desc}</span>`);
+    b.onclick = () => {
+      if(xrActive){ addForXR(v); return; }
+      setArmed(armed===v.key ? null : v.key);
+    };
+    vg.append(b);
+  }
+}
+function moduleRow(m, withEye){
+  const p = m.p;
+  const d = document.createElement('div'); d.className = 'mrow' + (m.id===selId?' sel':'');
+  d.innerHTML = `<span class="dots">${p.fire>0?'<i class="dot f"></i>':''}${p.smoke>0?'<i class="dot s"></i>':''}${p.victims>0?'<i class="dot v"></i>':''}${!(p.fire||p.smoke||p.victims)?'<i class="dot"></i>':''}</span>
+    <button class="nm"><b></b><small></small></button>
+    ${withEye ? `<button class="eye" aria-pressed="${m.visible}">${m.visible?'Visible':'Masquée'}</button>` : ''}`;
+  d.querySelector('b').textContent = m.name;
+  d.querySelector('small').textContent = MODES[m.mode] + (xrActive ? (m.xr ? ' · posée' : ' · à poser') : '') + (p.fire>0 ? ' · feu ' + fireWord(p.fire) : '') + (p.smoke>0 ? ' · fumée ' + darkWord(p.dark) : '') + (p.victims ? ` · ${p.victims} victime${p.victims>1?'s':''}` : '');
+  d.querySelector('.nm').onclick = () => select(m.id);
+  const eye = d.querySelector('.eye'); if(eye) eye.onclick = () => { m.visible = !m.visible; changed(); };
+  return d;
+}
+function renderLists(){
+  $('#mcount').textContent = cfg.modules.length;
+  const ml = $('#mlist'), pl = $('#plist'); ml.innerHTML = ''; pl.innerHTML = '';
+  if(!cfg.modules.length){ ml.innerHTML = '<p class="empty">Aucune vignette posée. Choisissez-en une dans la palette.</p>'; pl.innerHTML = ml.innerHTML; }
+  for(const m of cfg.modules){ ml.append(moduleRow(m, true)); pl.append(moduleRow(m, true)); }
+}
+function segs(el, opts, cur, on){
+  el.innerHTML = '';
+  for(const [k, label] of Object.entries(opts)){
+    const b = document.createElement('button'); b.textContent = label; b.setAttribute('aria-pressed', k===cur); b.onclick = () => on(k); el.append(b);
+  }
+}
+const selM = () => cfg.modules.find(m => m.id===selId) || null;
+function renderInspector(){
+  const m = selM();
+  $('#selName').textContent = m ? m.name : 'aucune';
+  $('#inspEmpty').hidden = !!m; $('#insp').hidden = !m;
+  if(m){
+    const p = m.p;
+    if(document.activeElement !== $('#inName')) $('#inName').value = m.name;
+    segs($('#inMode'), MODES, m.mode, k => { edit(m, mm => { mm.mode = k; }); });
+    segs($('#inExit'), EXITS, p.exit, k => edit(m, mm => mm.p.exit = k));
+    segs($('#inFill'), FILLS, p.fill, k => edit(m, mm => mm.p.fill = k));
+    for(const [id, key, fmt] of [['Smoke','smoke',v=>v+' %'],['Dark','dark',v=>darkWord(v)],['Pulse','pulse',v=>v? v+' %':'aucune'],['Fire','fire',v=>fireWord(v)]]){
+      const inp = $('#in'+id); if(document.activeElement !== inp) inp.value = p[key]; $('#o'+id).textContent = fmt(p[key]);
+    }
+    $('#inSoot').checked = p.soot;
+    $('#vCount').textContent = p.victims;
+    $('#inPose').value = p.pose;
+    $('#bHide').textContent = m.visible ? 'Masquer' : 'Afficher';
+    const md = MEDIA.get(m.id);
+    $('#oMedia').textContent = md ? md.name.slice(0, 22) : 'aucune';
+    segs($('#inMediaKey'), MKEYS, p.mediaKey, k => { m.p.mediaKey = k; placeMedia(m, RT.get(m.id)); changed(); });
+    if(document.activeElement !== $('#inMH')) $('#inMH').value = p.mediaH; $('#oMH').textContent = p.mediaH.toFixed(2) + ' m';
+    if(document.activeElement !== $('#inMY')) $('#inMY').value = p.mediaY; $('#oMY').textContent = (p.mediaY>=0?'+':'') + p.mediaY.toFixed(2) + ' m';
+  }
+  // ambiance
+  const G = cfg.global;
+  segs($('#inTime'), TIMES, G.time, k => { G.time = k; changed(); });
+  if(document.activeElement !== $('#inDraft')) $('#inDraft').value = G.draft;
+  if(document.activeElement !== $('#inWind')) $('#inWind').value = G.wind;
+  $('#oDraft').textContent = G.draft<25 ? 'faible' : G.draft<60 ? 'normal' : G.draft<85 ? 'fort' : 'très fort';
+  $('#oWind').textContent = G.wind===0 ? 'nul' : (G.wind<0 ? '← ' : '→ ') + (Math.abs(G.wind)<35?'faible':Math.abs(G.wind)<70?'modéré':'fort');
+}
+function renderPupitre(){
+  const m = selM();
+  $('#pupEmpty').hidden = !!m; $('#pup').hidden = !m;
+  $('#gDraft').style.width = cfg.global.draft + '%';
+  if(m){
+    const p = m.p;
+    $('#pName').textContent = m.name;
+    $('#pState').textContent = m.visible ? (p.fire>0 ? fireWord(p.fire) : p.smoke>0 ? 'fumée '+darkWord(p.dark) : p.victims ? 'victime' : 'calme') : 'masquée';
+    $('#mSmoke').style.width = p.smoke+'%'; $('#mSmokeV').textContent = p.smoke;
+    $('#mDark').style.width = p.dark+'%'; $('#mDarkV').textContent = p.dark;
+    $('#mFire').style.width = p.fire+'%'; $('#mFireV').textContent = p.fire;
+    $('#pVis').textContent = m.visible ? 'Masquer cette vignette' : 'Faire apparaître cette vignette';
+  }
+}
+function renderAll(){ renderLists(); renderInspector(); renderPupitre(); renderOverlay(); }
+function select(id){ selId = id; renderAll(); }
+function edit(m, fn){ fn(m); layout(m); changed(); }
+
+$('#inName').oninput = e => { const m = selM(); if(m){ m.name = e.target.value || 'Sans nom'; changed(); } };
+for(const [id, key] of [['Smoke','smoke'],['Dark','dark'],['Pulse','pulse'],['Fire','fire']]){
+  $('#in'+id).oninput = e => { const m = selM(); if(m){ m.p[key] = +e.target.value; changed(); } };
+}
+$('#mediaIn').onchange = e => { const m = selM(); const f = e.target.files[0]; if(m && f){ setMedia(m, f); if(f.type.startsWith('video') && m.p.mediaKey==='alpha' && /mp4|quicktime/.test(f.type)) toast('Vidéo MP4 : choisissez « Fond noir » ou « Fond vert » selon son fond.'); } e.target.value=''; };
+$('#mediaDel').onclick = () => { const m = selM(); if(m){ setMedia(m, null); renderAll(); } };
+$('#inMH').oninput = e => { const m = selM(); if(m){ m.p.mediaH = +e.target.value; placeMedia(m, RT.get(m.id)); changed(); } };
+$('#inMY').oninput = e => { const m = selM(); if(m){ m.p.mediaY = +e.target.value; placeMedia(m, RT.get(m.id)); changed(); } };
+$('#inSoot').onchange = e => { const m = selM(); if(m){ m.p.soot = e.target.checked; changed(); } };
+$('#inPose').innerHTML = Object.entries(POSES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+$('#inPose').onchange = e => { const m = selM(); if(m){ m.p.pose = e.target.value; changed(); } };
+$('#vMinus').onclick = () => { const m = selM(); if(m){ m.p.victims = Math.max(0, m.p.victims-1); layout(m); changed(); } };
+$('#vPlus').onclick = () => { const m = selM(); if(m){ m.p.victims = Math.min(3, m.p.victims+1); layout(m); changed(); } };
+$('#bDup').onclick = () => { const m = selM(); if(!m) return; const c = JSON.parse(JSON.stringify(m)); c.id = uid(); c.name = m.name + ' (copie)'; c.rect.u = Math.min(0.95, c.rect.u + c.rect.w*1.3); if(c.xr) c.xr = null; cfg.modules.push(c); layout(c); select(c.id); changed(); };
+$('#bHide').onclick = () => { const m = selM(); if(m){ m.visible = !m.visible; changed(); } };
+let delArm = 0;
+$('#bDel').onclick = e => {
+  const m = selM(); if(!m) return;
+  if(Date.now() - delArm > 3000){ delArm = Date.now(); e.target.textContent = 'Confirmer'; setTimeout(()=>{ e.target.textContent='Supprimer'; }, 3000); return; }
+  cfg.modules = cfg.modules.filter(x => x.id !== m.id); dropRT(m.id); selId = null; e.target.textContent = 'Supprimer'; changed();
+};
+$('#inDraft').oninput = e => { cfg.global.draft = +e.target.value; changed(); };
+$('#inWind').oninput = e => { cfg.global.wind = +e.target.value; changed(); };
+
+// pupitre
+document.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+  const m = selM(); if(!m) return; const p = m.p;
+  switch(b.dataset.a){
+    case 'smoke+': p.smoke = Math.min(100, p.smoke + 20); if(!m.visible) m.visible = true; break;
+    case 'smoke-': p.smoke = Math.max(0, p.smoke - 20); break;
+    case 'dark+': p.dark = Math.min(100, p.dark + 25); break;
+    case 'dark-': p.dark = Math.max(0, p.dark - 25); break;
+    case 'fire+': p.fire = p.fire < 26 ? Math.max(p.fire+12, p.fire>0 ? 35 : 18) : Math.min(100, p.fire + 18); if(p.fill==='aucun') p.fill = 'sombre'; if(!m.visible) m.visible = true; break;
+    case 'fire-': p.fire = Math.max(0, p.fire - 20); break;
+    case 'pulse': p.pulse = p.pulse > 0 ? 0 : 75; if(p.smoke < 30) p.smoke = 50; break;
+    case 'flash': p.fire = 100; p.smoke = Math.max(p.smoke, 80); p.dark = 96; p.soot = true; p.fill = 'sombre'; m.visible = true; break;
+    case 'extinct': p.fire = 0; p.pulse = 0; p.dark = 8; p.smoke = Math.max(35, Math.round(p.smoke*0.7)); break;
+    case 'vic+': p.victims = Math.min(3, p.victims + 1); m.visible = true; layout(m); break;
+    case 'vic-': p.victims = Math.max(0, p.victims - 1); layout(m); break;
+    case 'vis': m.visible = !m.visible; break;
+  }
+  changed();
+});
+document.querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
+  const G = cfg.global;
+  switch(b.dataset.g){
+    case 'draft+': G.draft = Math.min(100, G.draft + 15); break;
+    case 'draft-': G.draft = Math.max(0, G.draft - 15); break;
+    case 'wind-l': G.wind = Math.max(-100, Math.min(0, G.wind) - 35); break;
+    case 'wind-r': G.wind = Math.min(100, Math.max(0, G.wind) + 35); break;
+    case 'wind-0': G.wind = 0; break;
+    case 'all-show': cfg.modules.forEach(m => m.visible = true); break;
+    case 'all-out': cfg.modules.forEach(m => { m.p.fire = 0; m.p.smoke = 0; m.p.pulse = 0; }); break;
+  }
+  changed();
+});
+
+// photo
+$('#photoIn').onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const img = new Image(); const url = URL.createObjectURL(f);
+  img.onload = () => {
+    const max = 2048, s = Math.min(1, max/Math.max(img.width, img.height));
+    const cv = document.createElement('canvas'); cv.width = Math.round(img.width*s); cv.height = Math.round(img.height*s);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(url);
+    setPhoto(cv.toDataURL('image/jpeg', 0.86)); changed(); toast('Photo chargée. Posez maintenant les vignettes sur ses fenêtres.');
+  };
+  img.src = url; e.target.value = '';
+};
+$('#bSample').onclick = () => { setPhoto(null); changed(); };
+
+// export / import
+function openIO(mode){
+  $('#mIO').hidden = false; $('#ioTitle').textContent = mode==='export' ? 'Exporter la configuration' : 'Importer une configuration';
+  $('#ioHint').textContent = mode==='export' ? 'Copiez ce texte et collez-le dans « Importer » sur l’autre appareil. La photo n’est pas incluse.' : 'Collez ici le texte exporté depuis un autre appareil.';
+  $('#ioText').value = mode==='export' ? JSON.stringify(cfg) : '';
+  $('#ioGo').textContent = mode==='export' ? 'Copier' : 'Importer';
+  $('#ioGo').onclick = async () => {
+    if(mode==='export'){
+      try{ await navigator.clipboard.writeText($('#ioText').value); toast('Configuration copiée.'); }
+      catch(e){ $('#ioText').select(); toast('Sélectionnez le texte et copiez-le.'); }
+    } else {
+      try{ const j = JSON.parse($('#ioText').value); if(!Array.isArray(j.modules)) throw 0; for(const id of [...RT.keys()]) dropRT(id); cfg = normalize(j); selId = null; layoutAll(); changed(); $('#mIO').hidden = true; toast('Configuration importée.'); }
+      catch(e){ toast('Ce texte n’est pas une configuration valide.'); }
+    }
+  };
+}
+$('#bExport').onclick = () => openIO('export');
+$('#bImport').onclick = () => openIO('import');
+$('#ioClose').onclick = () => $('#mIO').hidden = true;
+let clrArm = 0;
+$('#bClear').onclick = e => {
+  if(Date.now()-clrArm > 3000){ clrArm = Date.now(); e.target.textContent = 'Confirmer'; setTimeout(()=>e.target.textContent='Tout retirer', 3000); return; }
+  for(const id of [...RT.keys()]) dropRT(id); cfg.modules = []; selId = null; e.target.textContent = 'Tout retirer'; changed();
+};
+function normalize(j){
+  j.global = {draft:50, wind:0, time:'jour', ...(j.global||{})};
+  j.modules = j.modules.map(m => ({id:m.id||uid(), type:m.type||'', name:m.name||'Vignette', mode:MODES[m.mode]?m.mode:'fenetre', visible:m.visible!==false, rect:m.rect||{u:.45,v:.45,w:.05,h:.08}, xr:m.xr||null, p:{...BASE, ...(m.p||{})}}));
+  return j;
+}
+
+/* ------------------------------------------------------------------ */
+/* Vue stagiaire                                                       */
+/* ------------------------------------------------------------------ */
+let trainee = false;
+function setTrainee(on){
+  trainee = on; $('#app').classList.toggle('trainee', on);
+  if(on && location.hash !== '#vue') history.replaceState(null, '', '#vue');
+  if(!on && location.hash === '#vue') history.replaceState(null, '', location.pathname + location.search);
+  setTimeout(resize, 30); renderOverlay();
+}
+$('#bTrainee').onclick = () => { setTrainee(true); document.documentElement.requestFullscreen?.().catch(()=>{}); };
+$('#exitTrainee').onclick = () => { setTrainee(false); if(document.fullscreenElement) document.exitFullscreen?.().catch(()=>{}); };
+addEventListener('hashchange', () => setTrainee(location.hash === '#vue'));
+addEventListener('keydown', e => {
+  if(e.target.closest('input,textarea,select')) return;
+  if(e.key==='Escape'){ if(armed) setArmed(null); else if(trainee) setTrainee(false); }
+});
+
+/* ------------------------------------------------------------------ */
+/* Synchronisation : même navigateur (onglets) + liaison entre appareils */
+/* ------------------------------------------------------------------ */
+let bc = null; try{ bc = new BroadcastChannel('feu-facade-ra'); }catch(e){}
+let peer = null, conns = [], linkRole = null;
+let sendT = 0, lastSentPhoto = -1;
+function changed(rebuild=true){
+  save();
+  if(rebuild){ renderAll(); applyAmbience(); }
+  clearTimeout(sendT); sendT = setTimeout(broadcast, 80);
+}
+function payload(withPhoto){ return {t:'state', from:CLIENT, cfg, photo: withPhoto ? (photoURL || '') : undefined, photoVer}; }
+function broadcast(){
+  const withPhoto = lastSentPhoto !== photoVer; lastSentPhoto = photoVer;
+  try{ bc && bc.postMessage(payload(withPhoto)); }catch(e){}
+  for(const c of conns){ try{ if(c.open){ c.send(payload(c._pv !== photoVer)); c._pv = photoVer; } }catch(e){} }
+}
+function receive(d){
+  if(!d || d.t!=='state' || d.from===CLIENT) return;
+  const incoming = normalize(d.cfg);
+  // en réalité augmentée, on garde les positions posées dans ce masque
+  if(xrActive) for(const m of incoming.modules){ const local = cfg.modules.find(x=>x.id===m.id); if(local && local.xr) m.xr = local.xr; }
+  cfg = incoming;
+  if(d.photo !== undefined && !xrActive){ setPhoto(d.photo || null); }
+  layoutAll(); save(); renderAll(); applyAmbience();
+}
+if(bc){
+  bc.onmessage = e => receive(e.data);
+  bc.postMessage({t:'hello', from:CLIENT});
+  bc.addEventListener('message', e => { if(e.data && e.data.t==='hello' && !trainee){ lastSentPhoto = -1; broadcast(); } });
+}
+function setLink(txt, ok){ const el = $('#linkState'); el.textContent = txt; el.classList.toggle('ok', !!ok); }
+function loadPeer(){
+  return new Promise((res, rej) => {
+    if(window.Peer) return res();
+    const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
+    s.onload = () => res(); s.onerror = () => rej(new Error('script')); document.head.append(s);
+  });
+}
+function wireConn(c){
+  c.on('open', () => { conns.push(c); c._pv = -1; setLink(linkRole==='host' ? `Relié · ${conns.length} appareil${conns.length>1?'s':''}` : 'Relié à l’opérateur', true); if(linkRole==='host'){ c.send(payload(true)); c._pv = photoVer; } $('#lMsg').textContent = 'Liaison établie.'; });
+  c.on('data', d => receive(d));
+  c.on('close', () => { conns = conns.filter(x => x!==c); setLink(conns.length ? `Relié · ${conns.length}` : 'Liaison perdue', conns.length>0); });
+}
+const linkFail = () => { $('#lMsg').textContent = 'La liaison n’a pas pu s’établir. Elle nécessite la version hébergée de l’application et une connexion internet sur les deux appareils.'; setLink('Non relié'); };
+$('#bLink').onclick = () => { $('#mLink').hidden = false; };
+$('#lClose').onclick = () => { $('#mLink').hidden = true; };
+$('#lHost').onclick = async () => {
+  const code = String(1000 + Math.floor(Math.random()*9000));
+  $('#lMsg').textContent = 'Création de la session…';
+  try{
+    await loadPeer(); if(peer) peer.destroy();
+    linkRole = 'host'; peer = new window.Peer('feu-facade-ra-' + code);
+    peer.on('open', () => { $('#lCode').hidden = false; $('#lCode').textContent = code; $('#lMsg').textContent = 'Saisissez ce code dans le masque.'; setLink('Session ' + code); });
+    peer.on('connection', wireConn);
+    peer.on('error', linkFail);
+  }catch(e){ linkFail(); }
+};
+$('#lJoin').onclick = async () => {
+  const code = $('#lJoinCode').value.trim(); if(!/^\d{4}$/.test(code)){ $('#lMsg').textContent = 'Le code compte 4 chiffres.'; return; }
+  $('#lMsg').textContent = 'Connexion…';
+  try{
+    await loadPeer(); if(peer) peer.destroy();
+    linkRole = 'guest'; peer = new window.Peer();
+    peer.on('open', () => wireConn(peer.connect('feu-facade-ra-' + code, {reliable:true})));
+    peer.on('error', linkFail);
+  }catch(e){ linkFail(); }
+};
+
+/* ------------------------------------------------------------------ */
+/* Réalité augmentée (Meta Quest 3, Android) : WebXR passthrough       */
+/* ------------------------------------------------------------------ */
+let xrActive = false, carry = null, carryDist = 12, xrHint = null;
+const controllers = [];
+const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]);
+function hintSprite(){
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256;
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, depthTest:false, transparent:true}));
+  sp.scale.set(0.5, 0.125, 1); sp.renderOrder = 20;
+  sp.userData.draw = (lines) => { const g = cv.getContext('2d'); g.clearRect(0,0,1024,256); g.fillStyle='rgba(12,15,18,.82)'; g.fillRect(0,0,1024,256); g.fillStyle='#f3b61f'; g.font='600 46px system-ui,sans-serif'; g.fillText(lines[0], 30, 70); g.fillStyle='#fff'; g.font='36px system-ui,sans-serif'; lines.slice(1).forEach((l,i)=>g.fillText(l, 30, 130+i*52)); tex.needsUpdate = true; };
+  return sp;
+}
+function xrHintUpdate(){
+  if(!xrHint) return;
+  const unplaced = cfg.modules.filter(m => !m.xr).length;
+  if(carry) xrHint.userData.draw([`Placer : ${carry.name}`, 'Gâchette : poser sur la fenêtre', 'Joystick ↕ distance · ↔ taille']);
+  else xrHint.userData.draw([unplaced ? `${unplaced} vignette(s) à poser` : 'Toutes les vignettes sont posées', 'Gâchette : prendre la suivante ou en viser une', 'Poignée : masquer ce panneau']);
+}
+function setupControllers(){
+  for(let i=0;i<2;i++){
+    const c = renderer.xr.getController(i);
+    const line = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({color:0xf3b61f, transparent:true, opacity:.7}));
+    line.scale.z = 30; c.add(line);
+    c.addEventListener('select', () => onXRSelect(c));
+    c.addEventListener('squeeze', () => { if(xrHint) xrHint.visible = !xrHint.visible; });
+    c.addEventListener('connected', e => { c.userData.src = e.data; });
+    c.addEventListener('disconnected', () => { c.userData.src = null; });
+    scene.add(c); controllers.push(c);
+  }
+  xrHint = hintSprite(); controllers[1].add(xrHint); xrHint.position.set(0, 0.12, -0.25);
+}
+const ray = new THREE.Raycaster();
+function controllerRay(c){ const m = c.matrixWorld; const o = new V3().setFromMatrixPosition(m); const d = new V3(0,0,-1).transformDirection(m); return {o, d}; }
+function onXRSelect(c){
+  if(carry){ carry = null; changed(); xrHintUpdate(); return; }
+  // viser une vignette déjà posée
+  const {o, d} = controllerRay(c); ray.set(o, d);
+  let best = null, bestD = 1e9;
+  for(const m of cfg.modules){
+    if(!m.xr) continue; const R = RT.get(m.id); if(!R) continue;
+    const pl = new THREE.Plane().setFromNormalAndCoplanarPoint(R.n, R.o); const hit = new V3();
+    if(!ray.ray.intersectPlane(pl, hit)) continue;
+    const lx = (hit.x-R.o.x)*R.rt.x + (hit.z-R.o.z)*R.rt.z, ly = hit.y - R.o.y;
+    if(Math.abs(lx) < R.w/2 + 0.4 && Math.abs(ly) < R.h/2 + 0.4){ const dd = hit.distanceTo(o); if(dd < bestD){ bestD = dd; best = m; } }
+  }
+  const next = best || cfg.modules.find(m => !m.xr);
+  if(!next){ return; }
+  carry = next; carry._ctrl = c; if(best) carryDist = bestD;
+  if(!carry.xr){ const [w,h] = MODE_SIZE[carry.mode]; carry.xr = {p:[0,0,0], yaw:0, w, h}; }
+  select(carry.id); xrHintUpdate();
+}
+function addForXR(v){
+  const [w,h] = MODE_SIZE[v.mode];
+  const m = {id:uid(), type:v.key, name:v.label, mode:v.mode, visible:true, rect:{u:.45, v:.45, w:w/PW, h:h/PH}, xr:null, p:{...BASE, ...v.p}};
+  cfg.modules.push(m); layout(m); select(m.id); changed(); toast('Vignette ajoutée : posez-la avec la gâchette dans le casque.');
+}
+function xrFrame(dt){
+  if(!carry) return;
+  const c = carry._ctrl || controllers[1];
+  const src = c.userData.src;
+  const gp = src && src.gamepad;
+  if(gp && gp.axes.length >= 4){
+    const ax = gp.axes[2], ay = gp.axes[3];
+    if(Math.abs(ay) > 0.15) carryDist = clamp(carryDist * Math.exp(-ay*dt*1.2), 1.5, 80);
+    if(Math.abs(ax) > 0.15){ const f = Math.exp(ax*dt*0.8); carry.xr.w = clamp(carry.xr.w*f, 0.3, 30); carry.xr.h = clamp(carry.xr.h*f, 0.3, 30); }
+  }
+  const {o, d} = controllerRay(c);
+  const p = o.clone().addScaledVector(d, carryDist);
+  const yaw = Math.atan2(-d.x, -d.z);   // la vignette fait face à l'utilisateur
+  carry.xr.p = [p.x, p.y, p.z]; carry.xr.yaw = yaw;
+  layout(carry);
+}
+async function startXR(){
+  if(!navigator.xr){ toast('Ce navigateur ne gère pas la réalité augmentée.'); return; }
+  try{
+    const session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['local-floor']});
+    renderer.xr.setReferenceSpaceType('local-floor');
+    await renderer.xr.setSession(session);
+    xrActive = true; renderer.setClearColor(0x000000, 0); photoMesh.visible = false;
+    if(!controllers.length) setupControllers();
+    layoutAll(); xrHintUpdate(); renderAll();
+    session.addEventListener('end', () => {
+      xrActive = false; carry = null; renderer.setClearColor(0x07090b, 1); photoMesh.visible = true;
+      layoutAll(); resize(); renderAll();
+    });
+  }catch(e){ toast('Impossible de démarrer la réalité augmentée sur cet appareil.'); }
+}
+$('#bXR').onclick = startXR;
+(async () => {
+  let ok = false;
+  try{ ok = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar')); }catch(e){}
+  const b = $('#bXR');
+  if(ok){ b.classList.add('primary'); b.textContent = 'Entrer en réalité augmentée'; }
+  else { b.title = 'Disponible dans le navigateur du Meta Quest 3 ou Chrome Android, sur la version hébergée'; b.style.opacity = .6; }
+})();
+
+/* ------------------------------------------------------------------ */
+/* Boucle                                                              */
+/* ------------------------------------------------------------------ */
+const clock = new THREE.Clock();
+let T = 0;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(0.05, clock.getDelta()); T += dt;
+  if(xrActive) xrFrame(dt);
+  for(const m of cfg.modules){ const R = RT.get(m.id); if(!R) continue; stepModule(m, R, dt, T); emitModule(m, R, dt, T); }
+  camera.getWorldPosition(camWorld); camera.getWorldDirection(camDir);
+  if(renderer.xr.isPresenting){
+    const cam = renderer.xr.getCamera(); cam.getWorldPosition(camWorld); cam.getWorldDirection(camDir);
+    const vp = cam.cameras[0] && cam.cameras[0].viewport; const hh = vp ? vp.w/2 : 600;
+    SMOKE.mat.uniforms.uHalfH.value = FIRE.mat.uniforms.uHalfH.value = hh;
+  } else {
+    const hh = renderer.domElement.height/2;
+    SMOKE.mat.uniforms.uHalfH.value = FIRE.mat.uniforms.uHalfH.value = hh;
+  }
+  updateParticles(dt, T);
+  renderer.render(scene, camera);
+});
+
+/* ------------------------------------------------------------------ */
+/* Démarrage                                                           */
+/* ------------------------------------------------------------------ */
+loadState();
+cfg = normalize(cfg);
+buildPalette();
+setPhoto(photoURL);
+applyAmbience();
+layoutAll();
+// préchauffage : la fumée est déjà installée à l'ouverture
+for(let i=0;i<160;i++){ const dt = 1/30; T += dt; for(const m of cfg.modules){ const R = RT.get(m.id); stepModule(m, R, dt, T); emitModule(m, R, dt, T); } updateParticles(dt, T); }
+renderAll();
+let savedTab = 'vig'; try{ savedTab = localStorage.getItem(KEY+'.tab') || 'vig'; }catch(e){}
+showTab(tabs.includes(savedTab) ? savedTab : 'vig');
+if(location.hash === '#vue') setTrainee(true);
+resize();
+</script>
+
+</html>

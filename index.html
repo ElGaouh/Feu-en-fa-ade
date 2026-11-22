@@ -138,6 +138,25 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
 .modal .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;max-width:520px;width:100%;display:flex;flex-direction:column;gap:12px;max-height:100%;overflow:auto}
 .modal h3{margin:0;font:600 22px/1.1 var(--f-display);letter-spacing:.02em}
 .code{font:500 34px/1 var(--f-mono);letter-spacing:.18em;color:var(--accent);text-align:center;padding:10px;background:var(--panel2);border-radius:8px}
+#xrui{position:fixed;inset:0;z-index:50;color:#fff;font:15px/1.4 var(--f-body);touch-action:none;-webkit-user-select:none;user-select:none}
+#xrui button{font:inherit;color:#fff;background:rgba(20,24,29,.85);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:9px 12px;min-height:42px}
+.xr-top{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));left:10px;right:10px;display:flex;justify-content:space-between;gap:8px}
+.xr-dist{display:flex;align-items:center;gap:6px;background:rgba(20,24,29,.75);border-radius:10px;padding:4px 4px 4px 12px}
+.xr-dist button{min-width:42px}
+.xr-hint{position:absolute;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(20,24,29,.8);padding:10px 14px;border-radius:10px;text-align:center;width:max-content;max-width:calc(100% - 24px)}
+.xr-cross{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;border:2px solid rgba(243,182,31,.85);border-radius:50%;pointer-events:none}
+#xrctx{position:absolute;min-width:220px;max-width:calc(100% - 20px);max-height:60%;overflow:auto;background:rgba(18,22,27,.96);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:2px}
+#xrctx .ch{font:600 13px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.08em;color:#aab4be;padding:6px 8px}
+#xrctx button{background:none;border:0;text-align:left;padding:11px 10px}
+#xrctx button.del{color:var(--danger)}
+.xr-adj{position:absolute;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom,0px));background:rgba(18,22,27,.92);border:1px solid var(--accent);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.xr-adj-t{font-size:13px;color:#cfd6dc;text-align:center}
+.xr-adj-r{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap}
+.xr-adj-r button{min-width:46px}
+.xr-adj-r .ok{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600;flex:1}
+.xr-adj-r .del{color:var(--danger);flex:1}
+#xrToast{position:absolute;left:50%;top:70px;transform:translateX(-50%);background:rgba(20,24,29,.9);padding:8px 12px;border-radius:8px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100% - 24px);text-align:center}
+#xrToast.show{opacity:1}
 @media (max-width:820px){
   #app{grid-template-columns:1fr;grid-template-rows:52% 48%}
   #stage{order:-1}
@@ -295,6 +314,25 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
     <div id="toast"></div>
     <div id="ctx" hidden role="menu"></div>
   </main>
+</div>
+
+<div id="xrui" hidden>
+  <div class="xr-top">
+    <div class="xr-dist"><span id="xrDist">Façade : 12 m</span><button id="xrNear" aria-label="Plus près">−</button><button id="xrFar" aria-label="Plus loin">+</button></div>
+    <button id="xrExit">Quitter</button>
+  </div>
+  <div class="xr-hint" id="xrHint">Visez le bâtiment, puis faites un appui long sur une fenêtre pour y poser une vignette.</div>
+  <div class="xr-cross" aria-hidden="true"></div>
+  <div id="xrctx" hidden></div>
+  <div class="xr-adj" id="xrAdj" hidden>
+    <div class="xr-adj-t">Glissez un doigt pour déplacer, pincez pour agrandir</div>
+    <div class="xr-adj-r">
+      <span>Largeur</span><button data-x="w-">−</button><button data-x="w+">+</button>
+      <span>Hauteur</span><button data-x="h-">−</button><button data-x="h+">+</button>
+    </div>
+    <div class="xr-adj-r"><button data-x="del" class="del">Supprimer</button><button data-x="ok" class="ok">Terminer</button></div>
+  </div>
+  <div id="xrToast"></div>
 </div>
 
 <div class="modal" id="mLink" hidden>
@@ -1660,6 +1698,7 @@ function setupControllers(){
 const ray = new THREE.Raycaster();
 function controllerRay(c){ const m = c.matrixWorld; const o = new V3().setFromMatrixPosition(m); const d = new V3(0,0,-1).transformDirection(m); return {o, d}; }
 function onXRSelect(c){
+  if(c.userData.src && c.userData.src.targetRayMode === 'screen') return;   // sur téléphone : appui long géré par l'interface tactile
   if(carry){ carry = null; changed(); xrHintUpdate(); return; }
   // viser une vignette déjà posée
   const {o, d} = controllerRay(c); ray.set(o, d);
@@ -1693,21 +1732,159 @@ function xrFrame(dt){
     if(Math.abs(ax) > 0.15){ const f = Math.exp(ax*dt*0.8); carry.xr.w = clamp(carry.xr.w*f, 0.3, 30); carry.xr.h = clamp(carry.xr.h*f, 0.3, 30); }
   }
   const {o, d} = controllerRay(c);
-  const p = o.clone().addScaledVector(d, carryDist);
-  const yaw = Math.atan2(-d.x, -d.z);   // la vignette fait face à l'utilisateur
+  let p = o.clone().addScaledVector(d, carryDist);
+  if(xrPlane && !(gp && Math.abs(gp.axes[3]) > 0.15)){ const hit = rayPlane(o, d, xrPlane); if(hit) p = hit; }
+  const yaw = xrPlane ? xrPlane.yaw : Math.atan2(-d.x, -d.z);   // la vignette fait face à l'utilisateur
   carry.xr.p = [p.x, p.y, p.z]; carry.xr.yaw = yaw;
+  if(!xrPlane) setPlane(p, yaw);
   layout(carry);
 }
+/* -- téléphone / tablette : appui long pour poser, régler ou supprimer, sur un plan de façade commun -- */
+let xrPlane = null, xrHitSrc = null, xrHitDist = null, xrDistManual = 12, xrAdj = null;
+function setPlane(p, yaw){ xrPlane = {p:p.clone(), yaw, n:new V3(Math.sin(yaw), 0, Math.cos(yaw))}; }
+function rayPlane(o, d, pl){ const den = d.dot(pl.n); if(Math.abs(den) < 1e-4) return null; const t = pl.p.clone().sub(o).dot(pl.n)/den; return t > 0.3 ? o.clone().addScaledVector(d, t) : null; }
+function xrCam(){ const cam = renderer.xr.getCamera(); return (cam.cameras && cam.cameras[0]) || cam; }
+function touchRay(x, y){
+  const c = xrCam(); const o = new V3().setFromMatrixPosition(c.matrixWorld);
+  const pt = new V3((x/innerWidth)*2-1, -(y/innerHeight)*2+1, 0.5).unproject(c);
+  return {o, d:pt.sub(o).normalize()};
+}
+const xrDist = () => xrHitDist ?? xrDistManual;
+function xrToast(msg){ const t = $('#xrToast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('show'), 2200); }
+function xrUIRender(){
+  $('#xrDist').textContent = xrPlane ? 'Façade calée' : (xrHitDist != null ? `Façade détectée : ${xrHitDist.toFixed(1)} m` : `Façade : ${xrDistManual.toFixed(0)} m`);
+  const unplaced = cfg.modules.filter(m => !m.xr).length;
+  $('#xrHint').textContent = xrAdj ? '' : (unplaced ? `Appui long sur une fenêtre pour poser une vignette (${unplaced} préparée${unplaced>1?'s':''} sur la tablette).` : 'Appui long sur une fenêtre : poser une vignette. Sur une vignette : la régler.');
+  $('#xrHint').hidden = !!xrAdj;
+}
+function moduleAt(x, y){
+  const {o, d} = touchRay(x, y); let best = null, bd = 1e9;
+  for(const m of cfg.modules){
+    if(!m.xr) continue; const R = RT.get(m.id); if(!R) continue;
+    const hit = rayPlane(o, d, {p:R.o, n:R.n}); if(!hit) continue;
+    const lx = (hit.x-R.o.x)*R.rt.x + (hit.z-R.o.z)*R.rt.z, ly = hit.y - R.o.y, mg = Math.max(0.35, R.w*0.25);
+    if(Math.abs(lx) < R.w/2 + mg && Math.abs(ly) < R.h/2 + mg){ const dd = hit.distanceTo(o); if(dd < bd){ bd = dd; best = m; } }
+  }
+  return best;
+}
+function xrPlaceAt(x, y, make){
+  const {o, d} = touchRay(x, y);
+  let p = xrPlane ? rayPlane(o, d, xrPlane) : null;
+  let yaw;
+  if(!p){
+    p = o.clone().addScaledVector(d, xrDist());
+    const hz = new V3(d.x, 0, d.z).normalize(); yaw = Math.atan2(-hz.x, -hz.z);
+    setPlane(p, yaw);
+  } else yaw = xrPlane.yaw;
+  const m = make();
+  const [w, h] = MODE_SIZE[m.mode];
+  m.xr = {p:[p.x, p.y, p.z], yaw, w, h};
+  layout(m); select(m.id); changed(); xrUIRender();
+  return m;
+}
+const xrctx = $('#xrctx');
+function xrCloseMenu(){ xrctx.hidden = true; xrctx.innerHTML = ''; }
+function xrMenu(x, y, title, items){
+  xrctx.innerHTML = ''; const h = document.createElement('div'); h.className = 'ch'; h.textContent = title; xrctx.append(h);
+  for(const [label, fn, cls] of items){ const b = document.createElement('button'); b.textContent = label; if(cls) b.className = cls; b.onclick = ev => { ev.stopPropagation(); xrCloseMenu(); fn(); }; xrctx.append(b); }
+  xrctx.hidden = false;
+  const W = innerWidth, H = innerHeight;
+  xrctx.style.left = clamp(x - xrctx.offsetWidth/2, 10, W - xrctx.offsetWidth - 10) + 'px';
+  xrctx.style.top = clamp(y + 12, 60, H - xrctx.offsetHeight - 10) + 'px';
+}
+function xrAddMenu(x, y){
+  const items = [];
+  for(const m of cfg.modules.filter(m => !m.xr)) items.push(['Préparée : ' + m.name, () => xrPlaceAt(x, y, () => m)]);
+  for(const v of VIGNETTES) items.push([v.label, () => xrPlaceAt(x, y, () => { const m = {id:uid(), type:v.key, name:v.label, mode:v.mode, visible:true, rect:{u:.45, v:.45, w:.05, h:.08}, xr:null, p:{...BASE, ...v.p}}; cfg.modules.push(m); return m; })]);
+  if(xrPlane) items.push(['Recaler la façade (prochaine pose)', () => { xrPlane = null; xrUIRender(); xrToast('La prochaine vignette posée définira la façade.'); }]);
+  xrMenu(x, y, 'Poser ici', items);
+}
+function xrModuleMenu(m, x, y){
+  select(m.id);
+  const p = m.p;
+  xrMenu(x, y, m.name, [
+    ['Ajuster la position et la taille', () => { xrAdj = m; $('#xrAdj').hidden = false; xrUIRender(); }],
+    ['+ Fumée', () => { p.smoke = Math.min(100, p.smoke + 20); changed(); }],
+    ['+ Flammes', () => { p.fire = p.fire < 26 ? Math.max(p.fire + 12, p.fire > 0 ? 35 : 18) : Math.min(100, p.fire + 18); if(p.fill==='aucun') p.fill = 'sombre'; changed(); }],
+    ['Extinction', () => { p.fire = 0; p.pulse = 0; p.dark = 8; p.smoke = Math.max(35, Math.round(p.smoke*0.7)); changed(); }],
+    [m.visible ? 'Masquer' : 'Faire apparaître', () => { m.visible = !m.visible; changed(); }],
+    ['Retirer du bâtiment (garder sur la tablette)', () => { m.xr = null; layout(m); changed(); xrUIRender(); }],
+    ['Supprimer', () => { cfg.modules = cfg.modules.filter(z => z.id !== m.id); dropRT(m.id); selId = null; changed(); xrUIRender(); }, 'del'],
+  ]);
+}
+(function wireXRTouch(){
+  const ui = $('#xrui');
+  ui.addEventListener('beforexrselect', e => e.preventDefault());
+  const pts = new Map(); let lpT = 0, start = null, pinch0 = null;
+  ui.addEventListener('pointerdown', e => {
+    if(e.target.closest('button, #xrctx, .xr-adj')) return;
+    if(!xrctx.hidden){ xrCloseMenu(); return; }
+    pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    if(pts.size === 1){
+      start = {x:e.clientX, y:e.clientY, lx:e.clientX, ly:e.clientY};
+      clearTimeout(lpT);
+      if(!xrAdj) lpT = setTimeout(() => { navigator.vibrate?.(30); const m = moduleAt(start.x, start.y); m ? xrModuleMenu(m, start.x, start.y) : xrAddMenu(start.x, start.y); start = null; }, 550);
+    } else if(pts.size === 2 && xrAdj){
+      const [a, b] = [...pts.values()]; pinch0 = {d:Math.hypot(a.x-b.x, a.y-b.y), w:xrAdj.xr.w, h:xrAdj.xr.h};
+    }
+  });
+  ui.addEventListener('pointermove', e => {
+    if(!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    if(start && Math.hypot(e.clientX-start.x, e.clientY-start.y) > 10) clearTimeout(lpT);
+    if(!xrAdj || !xrAdj.xr) return;
+    if(pts.size === 2 && pinch0){
+      const [a, b] = [...pts.values()]; const f = clamp(Math.hypot(a.x-b.x, a.y-b.y) / Math.max(20, pinch0.d), 0.2, 6);
+      xrAdj.xr.w = clamp(pinch0.w*f, 0.2, 40); xrAdj.xr.h = clamp(pinch0.h*f, 0.2, 40); layout(xrAdj); return;
+    }
+    if(pts.size === 1 && start){
+      const R = RT.get(xrAdj.id); if(!R) return;
+      const pl = {p:R.o.clone(), n:R.n};
+      const r0 = touchRay(start.lx, start.ly), r1 = touchRay(e.clientX, e.clientY);
+      const h0 = rayPlane(r0.o, r0.d, pl), h1 = rayPlane(r1.o, r1.d, pl);
+      if(h0 && h1){ const dlt = h1.sub(h0); xrAdj.xr.p = [xrAdj.xr.p[0]+dlt.x, xrAdj.xr.p[1]+dlt.y, xrAdj.xr.p[2]+dlt.z]; layout(xrAdj); }
+      start.lx = e.clientX; start.ly = e.clientY;
+    }
+  });
+  const up = e => { pts.delete(e.pointerId); clearTimeout(lpT); if(pts.size < 2) pinch0 = null; if(!pts.size){ start = null; if(xrAdj) changed(); } };
+  ui.addEventListener('pointerup', up); ui.addEventListener('pointercancel', up);
+  document.querySelectorAll('#xrAdj [data-x]').forEach(b => b.onclick = () => {
+    const m = xrAdj; if(!m || !m.xr) return;
+    const k = b.dataset.x;
+    if(k==='w-') m.xr.w = Math.max(0.2, m.xr.w*0.92); if(k==='w+') m.xr.w = Math.min(40, m.xr.w*1.08);
+    if(k==='h-') m.xr.h = Math.max(0.2, m.xr.h*0.92); if(k==='h+') m.xr.h = Math.min(40, m.xr.h*1.08);
+    if(k==='del'){ cfg.modules = cfg.modules.filter(z => z.id !== m.id); dropRT(m.id); selId = null; xrAdj = null; $('#xrAdj').hidden = true; changed(); xrUIRender(); return; }
+    if(k==='ok'){ xrAdj = null; $('#xrAdj').hidden = true; changed(); xrUIRender(); return; }
+    layout(m); changed();
+  });
+  $('#xrNear').onclick = () => { if(xrPlane){ xrToast('Façade déjà calée : faites « Recaler la façade » depuis le menu.'); return; } xrHitDist = null; xrDistManual = Math.max(2, xrDistManual - 2); xrUIRender(); };
+  $('#xrFar').onclick = () => { if(xrPlane){ xrToast('Façade déjà calée : faites « Recaler la façade » depuis le menu.'); return; } xrHitDist = null; xrDistManual = Math.min(80, xrDistManual + 2); xrUIRender(); };
+  $('#xrExit').onclick = () => renderer.xr.getSession()?.end();
+})();
+let hitTick = 0;
+function xrHitFrame(frame){
+  if(!xrHitSrc || !frame || xrPlane) return;
+  if(++hitTick % 10) return;
+  const ref = renderer.xr.getReferenceSpace(); const res = frame.getHitTestResults(xrHitSrc);
+  if(res.length){ const pose = res[0].getPose(ref); if(pose){ const t = pose.transform.position; const c = xrCam(); const o = new V3().setFromMatrixPosition(c.matrixWorld); const d = o.distanceTo(new V3(t.x, t.y, t.z)); if(d > 1.5){ xrHitDist = d; xrUIRender(); } } }
+}
+
 async function startXR(){
   if(!navigator.xr){ toast('Ce navigateur ne gère pas la réalité augmentée.'); return; }
   try{
-    const session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['local-floor']});
-    renderer.xr.setReferenceSpaceType('local-floor');
+    const xrui = $('#xrui');
+    let session;
+    try{ session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['local-floor','dom-overlay','hit-test'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local-floor'); }
+    catch(e){ session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['dom-overlay','hit-test'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local'); }
     await renderer.xr.setSession(session);
+    xrPlane = null; xrHitSrc = null;
+    if(session.domOverlayState){ xrui.hidden = false; xrUIRender(); }
+    try{ const vs = await session.requestReferenceSpace('viewer'); xrHitSrc = await session.requestHitTestSource({space:vs}); }catch(e){ xrHitSrc = null; }
     xrActive = true; renderer.setClearColor(0x000000, 0); photoMesh.visible = false;
     if(!controllers.length) setupControllers();
     layoutAll(); xrHintUpdate(); renderAll();
     session.addEventListener('end', () => {
+      $('#xrui').hidden = true; xrCloseMenu(); xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
       xrActive = false; carry = null; renderer.setClearColor(0x07090b, 1); photoMesh.visible = true;
       layoutAll(); resize(); renderAll();
     });
@@ -1830,9 +2007,9 @@ renderSound();
 /* ------------------------------------------------------------------ */
 const clock = new THREE.Clock();
 let T = 0;
-renderer.setAnimationLoop(() => {
+renderer.setAnimationLoop((time, frame) => {
   const dt = Math.min(0.05, clock.getDelta()); T += dt;
-  if(xrActive) xrFrame(dt);
+  if(xrActive){ xrFrame(dt); xrHitFrame(frame); }
   for(const m of cfg.modules){ const R = RT.get(m.id); if(!R) continue; stepModule(m, R, dt, T); emitModule(m, R, dt, T); }
   camera.getWorldPosition(camWorld); camera.getWorldDirection(camDir);
   if(renderer.xr.isPresenting){

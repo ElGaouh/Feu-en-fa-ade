@@ -118,6 +118,13 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
 #armed{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(14,18,22,.88);border:1px solid var(--accent);color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;pointer-events:auto;display:flex;gap:10px;align-items:center;max-width:calc(100% - 24px)}
 #toast{position:absolute;left:50%;top:58px;transform:translateX(-50%);background:#222a33;border:1px solid var(--line);padding:8px 12px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100% - 24px);text-align:center}
 #toast.show{opacity:1}
+#stage{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#ctx{position:absolute;z-index:5;min-width:220px;max-width:min(300px,calc(100% - 16px));max-height:min(420px,calc(100% - 16px));overflow:auto;background:rgba(18,22,27,.97);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:2px}
+#ctx .ch{font:600 13px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:6px 8px 4px}
+#ctx button{display:flex;align-items:center;gap:8px;text-align:left;background:none;border:0;border-radius:6px;padding:9px 8px;font-size:14px;color:var(--fg)}
+#ctx button:hover,#ctx button:focus-visible{background:var(--raise)}
+#ctx button.del{color:var(--danger)}
+#ctx .dots{flex:none}
 .linkpill{font:500 12px/1 var(--f-mono);padding:7px 10px;border-radius:99px;background:rgba(14,18,22,.82);border:1px solid rgba(255,255,255,.12);color:var(--muted)}
 .linkpill.ok{color:var(--ok);border-color:rgba(95,209,139,.4)}
 /* Vue stagiaire */
@@ -157,7 +164,7 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
       <div class="view" id="view-vig">
         <section>
           <h2>Palette</h2>
-          <p class="hint" style="margin-bottom:10px">Choisissez une vignette, puis touchez la fenêtre du bâtiment où la poser. Ajustez ensuite le cadre aux dimensions réelles de la fenêtre.</p>
+          <p class="hint" style="margin-bottom:10px">Choisissez une vignette, puis touchez la fenêtre où la poser. Ou faites un appui long (clic droit sur ordinateur) sur la photo pour ajouter, ou sur une vignette pour la supprimer.</p>
           <div class="vgrid" id="vgrid"></div>
         </section>
         <section>
@@ -272,6 +279,7 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
     </div>
     <div id="armed" hidden><span id="armedTxt"></span><button class="btn" id="armedCancel">Annuler</button></div>
     <div id="toast"></div>
+    <div id="ctx" hidden role="menu"></div>
   </main>
 </div>
 
@@ -345,6 +353,26 @@ const KEY = 'feu-facade-ra.v1';
 const CLIENT = uid();
 let photoURL = null;       // null = photo d'exemple
 let photoVer = 0;
+let photoStamp = 0;        // date de la photo choisie ; 0 = photo d'exemple. La plus récente l'emporte.
+/* Photo conservée dans la base locale du navigateur (IndexedDB), qui accepte les grosses images */
+const idb = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    try{ const r = indexedDB.open('feu-facade-ra', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }
+    catch(e){ rej(e); }
+  }));
+  const tx = (mode, fn) => open().then(db => new Promise((res, rej) => { const t = db.transaction('kv', mode); const st = t.objectStore('kv'); const q = fn(st); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }));
+  return { get: k => tx('readonly', st => st.get(k)).catch(() => null), put: (k, v) => tx('readwrite', st => st.put(v, k)).then(() => true).catch(() => false) };
+})();
+async function storePhoto(){
+  const ok = await idb.put('photo', {url:photoURL, stamp:photoStamp});
+  if(!ok){ try{ localStorage.setItem(KEY+'.photo', JSON.stringify({url:photoURL, stamp:photoStamp})); }catch(e){ toast('Mémoire de l\u2019appareil pleine : la photo ne sera pas conservée au prochain chargement.'); } }
+}
+async function restorePhoto(){
+  let v = await idb.get('photo');
+  if(!v){ try{ v = JSON.parse(localStorage.getItem(KEY+'.photo')); }catch(e){} }
+  if(v && v.stamp > photoStamp) setPhoto(v.url || null, v.stamp, false);
+}
 let cfg = null;
 let selId = null;
 let armed = null;          // clé de vignette en attente de pose
@@ -369,7 +397,7 @@ function sampleConfig(){
 function loadState(){
   try{
     const j = JSON.parse(localStorage.getItem(KEY));
-    if(j && j.cfg && Array.isArray(j.cfg.modules)){ cfg = j.cfg; photoURL = j.photo || null; return; }
+    if(j && j.cfg && Array.isArray(j.cfg.modules)){ cfg = j.cfg; if(j.photo){ photoURL = j.photo; photoStamp = 1; } return; }
   }catch(e){}
   cfg = sampleConfig();
 }
@@ -377,8 +405,7 @@ let saveT = 0;
 function save(){
   clearTimeout(saveT);
   saveT = setTimeout(()=>{
-    try{ localStorage.setItem(KEY, JSON.stringify({cfg, photo:photoURL})); }
-    catch(e){ try{ localStorage.setItem(KEY, JSON.stringify({cfg, photo:null})); }catch(_){} }
+    try{ localStorage.setItem(KEY, JSON.stringify({cfg})); }catch(e){}
   }, 300);
 }
 
@@ -607,8 +634,10 @@ const photoMat = new THREE.MeshBasicMaterial({color:0xffffff, depthWrite:false})
 const photoMesh = new THREE.Mesh(new THREE.PlaneGeometry(1,1), photoMat);
 photoMesh.renderOrder = -10; scene.add(photoMesh);
 let photoAspect = 1.6;
-function setPhoto(url){
+function setPhoto(url, stamp, persist=true){
   photoURL = url; photoVer++;
+  if(stamp !== undefined) photoStamp = stamp;
+  if(persist) storePhoto();
   const apply = (tex, aspect) => {
     if(photoMat.map) photoMat.map.dispose();
     tex.colorSpace = THREE.SRGBColorSpace; photoMat.map = tex; photoMat.needsUpdate = true;
@@ -1071,6 +1100,10 @@ overlay.addEventListener('pointerdown', e => {
   const [pu, pv] = screenToPhoto(e.clientX - stage.getBoundingClientRect().left, e.clientY - stage.getBoundingClientRect().top);
   drag = {m, h:e.target.dataset.h || null, pu, pv, r0:{...m.rect}};
   box.setPointerCapture(e.pointerId);
+  if(!drag.h && e.button === 0){
+    const rect = stage.getBoundingClientRect(), x = e.clientX-rect.left, y = e.clientY-rect.top;
+    startLongPress(e, () => { if(drag){ Object.assign(drag.m.rect, drag.r0); layout(drag.m); drag = null; renderOverlay(); } openModuleMenu(m, x, y); });
+  }
 });
 overlay.addEventListener('pointermove', e => {
   if(!drag) return;
@@ -1088,21 +1121,81 @@ overlay.addEventListener('pointermove', e => {
 });
 const endDrag = () => { if(drag){ drag = null; changed(); } };
 overlay.addEventListener('pointerup', endDrag); overlay.addEventListener('pointercancel', endDrag);
+overlay.addEventListener('contextmenu', e => {
+  e.preventDefault(); const box = e.target.closest('.mbox'); if(!box) return;
+  const m = cfg.modules.find(x=>x.id===box.dataset.id); if(!m) return;
+  if(drag){ Object.assign(drag.m.rect, drag.r0); layout(drag.m); drag = null; }
+  const rect = stage.getBoundingClientRect(); openModuleMenu(m, e.clientX-rect.left, e.clientY-rect.top);
+});
 
 canvas.addEventListener('pointerdown', e => {
   if(xrActive || trainee) return;
   const rect = stage.getBoundingClientRect();
   const [pu, pv] = screenToPhoto(e.clientX-rect.left, e.clientY-rect.top);
+  closeCtx();
   if(armed){
     if(pu<0||pu>1||pv<0||pv>1){ toast('Touchez l’intérieur de la photo.'); return; }
-    const v = VIGNETTES.find(x=>x.key===armed);
-    const [mw, mh] = MODE_SIZE[v.mode];
-    const w = mw/PW, h = mh/PH;
-    const m = {id:uid(), type:v.key, name:v.label, mode:v.mode, visible:true, rect:{u:pu-w/2, v:pv-h/2, w, h}, xr:null, p:{...BASE, ...v.p}};
-    cfg.modules.push(m); layout(m); select(m.id); setArmed(null); changed();
-    toast('Ajustez les coins jaunes du cadre aux bords de la fenêtre.');
-  } else { select(null); }
+    placeAt(armed, pu, pv); setArmed(null);
+  } else {
+    select(null);
+    startLongPress(e, () => openAddMenu(e.clientX-rect.left, e.clientY-rect.top, pu, pv));
+  }
 });
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault(); if(xrActive || trainee) return;
+  const rect = stage.getBoundingClientRect(); const x = e.clientX-rect.left, y = e.clientY-rect.top;
+  const [pu, pv] = screenToPhoto(x, y); openAddMenu(x, y, pu, pv);
+});
+function placeAt(key, pu, pv){
+  const v = VIGNETTES.find(x=>x.key===key);
+  const [mw, mh] = MODE_SIZE[v.mode];
+  const w = mw/PW, h = mh/PH;
+  const m = {id:uid(), type:v.key, name:v.label, mode:v.mode, visible:true, rect:{u:pu-w/2, v:pv-h/2, w, h}, xr:null, p:{...BASE, ...v.p}};
+  cfg.modules.push(m); layout(m); select(m.id); changed();
+  toast('Ajustez les coins jaunes du cadre aux bords de la fenêtre.');
+  return m;
+}
+/* appui long (tactile) ou clic droit : menu contextuel */
+let lp = null;
+function startLongPress(e, fire){
+  cancelLongPress();
+  lp = {x:e.clientX, y:e.clientY, t:setTimeout(() => { lp = null; navigator.vibrate?.(30); fire(); }, 550)};
+}
+function cancelLongPress(){ if(lp){ clearTimeout(lp.t); lp = null; } }
+addEventListener('pointermove', e => { if(lp && Math.hypot(e.clientX-lp.x, e.clientY-lp.y) > 9) cancelLongPress(); });
+addEventListener('pointerup', cancelLongPress); addEventListener('pointercancel', cancelLongPress);
+const ctx = $('#ctx');
+function closeCtx(){ ctx.hidden = true; ctx.innerHTML = ''; }
+function showCtx(x, y){
+  ctx.hidden = false;
+  const W = stage.clientWidth, H = stage.clientHeight, cw = ctx.offsetWidth, chh = ctx.offsetHeight;
+  ctx.style.left = clamp(x + 6, 8, W - cw - 8) + 'px'; ctx.style.top = clamp(y + 6, 8, H - chh - 8) + 'px';
+  ctx.querySelector('button')?.focus({preventScroll:true});
+}
+const dotsFor = p => `<span class="dots">${p.fire>0?'<i class="dot f"></i>':''}${p.smoke>0?'<i class="dot s"></i>':''}${p.victims>0?'<i class="dot v"></i>':''}</span>`;
+function openAddMenu(x, y, pu, pv){
+  if(pu<0||pu>1||pv<0||pv>1) return;
+  ctx.innerHTML = '<div class="ch">Ajouter ici</div>';
+  for(const v of VIGNETTES){
+    const b = document.createElement('button'); b.setAttribute('role','menuitem');
+    b.innerHTML = dotsFor({...BASE, ...v.p}) + '<span></span>'; b.lastChild.textContent = v.label;
+    b.onclick = () => { closeCtx(); placeAt(v.key, pu, pv); };
+    ctx.append(b);
+  }
+  showCtx(x, y);
+}
+function openModuleMenu(m, x, y){
+  select(m.id);
+  ctx.innerHTML = '<div class="ch"></div>'; ctx.firstChild.textContent = m.name;
+  const item = (label, fn, cls) => { const b = document.createElement('button'); b.setAttribute('role','menuitem'); b.textContent = label; if(cls) b.className = cls; b.onclick = () => { closeCtx(); fn(); }; ctx.append(b); };
+  item('Régler cette vignette', () => showTab('reg'));
+  item(m.visible ? 'Masquer' : 'Faire apparaître', () => { m.visible = !m.visible; changed(); });
+  item('Dupliquer', () => $('#bDup').click());
+  item('Supprimer cette vignette', () => { cfg.modules = cfg.modules.filter(z => z.id !== m.id); dropRT(m.id); selId = null; changed(); toast('Vignette supprimée.'); }, 'del');
+  showCtx(x, y);
+}
+addEventListener('pointerdown', e => { if(!ctx.hidden && !e.target.closest('#ctx')) closeCtx(); }, true);
+addEventListener('keydown', e => { if(e.key === 'Escape') closeCtx(); });
 
 /* ------------------------------------------------------------------ */
 /* Interface                                                           */
@@ -1309,11 +1402,15 @@ $('#photoIn').onchange = $('#camIn').onchange = e => {
     const cv = document.createElement('canvas'); cv.width = Math.round(img.width*s); cv.height = Math.round(img.height*s);
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
     URL.revokeObjectURL(url);
-    setPhoto(cv.toDataURL('image/jpeg', 0.86)); changed(); toast('Photo chargée. Posez maintenant les vignettes sur ses fenêtres.');
+    setPhoto(cv.toDataURL('image/jpeg', 0.86), Date.now()); changed(); toast('Photo enregistrée sur cet appareil. Posez maintenant les vignettes sur ses fenêtres.');
   };
   img.src = url; e.target.value = '';
 };
-$('#bSample').onclick = () => { setPhoto(null); changed(); };
+let smpArm = 0;
+$('#bSample').onclick = e => {
+  if(photoStamp > 0 && Date.now() - smpArm > 3000){ smpArm = Date.now(); e.target.textContent = 'Remplacer ma photo ?'; setTimeout(()=>e.target.textContent='Photo d\u2019exemple', 3000); return; }
+  e.target.textContent = 'Photo d\u2019exemple'; setPhoto(null, Date.now()); changed();
+};
 
 // export / import
 function openIO(mode){
@@ -1374,7 +1471,7 @@ function changed(rebuild=true){
   if(rebuild){ renderAll(); applyAmbience(); }
   clearTimeout(sendT); sendT = setTimeout(broadcast, 80);
 }
-function payload(withPhoto){ return {t:'state', from:CLIENT, cfg, photo: withPhoto ? (photoURL || '') : undefined, photoVer}; }
+function payload(withPhoto){ return {t:'state', from:CLIENT, cfg, photo: withPhoto ? (photoURL || '') : undefined, photoStamp}; }
 function broadcast(){
   const withPhoto = lastSentPhoto !== photoVer; lastSentPhoto = photoVer;
   try{ bc && bc.postMessage(payload(withPhoto)); }catch(e){}
@@ -1386,7 +1483,8 @@ function receive(d){
   // en réalité augmentée, on garde les positions posées dans ce masque
   if(xrActive) for(const m of incoming.modules){ const local = cfg.modules.find(x=>x.id===m.id); if(local && local.xr) m.xr = local.xr; }
   cfg = incoming;
-  if(d.photo !== undefined && !xrActive){ setPhoto(d.photo || null); }
+  // la photo reçue ne remplace la nôtre que si elle est plus récente : un écran sans photo n'efface jamais celle de l'opérateur
+  if(d.photo !== undefined && (d.photoStamp||0) > photoStamp){ setPhoto(d.photo || null, d.photoStamp); }
   layoutAll(); save(); renderAll(); applyAmbience();
 }
 if(bc){
@@ -1558,7 +1656,8 @@ renderer.setAnimationLoop(() => {
 loadState();
 cfg = normalize(cfg);
 buildPalette();
-setPhoto(photoURL);
+setPhoto(photoURL, photoStamp, false);
+restorePhoto();
 applyAmbience();
 layoutAll();
 // préchauffage : la fumée est déjà installée à l'ouverture

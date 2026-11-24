@@ -268,6 +268,9 @@ input[type=text],select,textarea{width:100%;background:var(--panel2);border:1px 
           <div class="box">
             <div class="gauge"><span class="nm">Tirage</span><div class="bar"><i id="gDraft"></i></div><button class="btn" data-g="draft-">−</button><button class="btn" data-g="draft+">+</button></div>
             <div class="row"><button class="btn" data-g="wind-l" style="flex:1">← Vent</button><button class="btn" data-g="wind-0" style="flex:1">Vent nul</button><button class="btn" data-g="wind-r" style="flex:1">Vent →</button></div>
+            <div class="field"><span class="lbl">Enfumage autour du stagiaire <output id="oVeil"></output></span><input type="range" id="inVeil" min="0" max="100" step="1"></div>
+            <p class="hint" id="veilTxt"></p>
+            <div class="row"><button class="btn" data-g="veil-strat" id="bStrat" style="flex:1"></button><button class="btn" data-g="veil-dark" id="bVeilDark" style="flex:1"></button></div>
             <div class="row"><button class="btn" data-g="all-show" style="flex:1">Tout afficher</button><button class="btn" data-g="all-out" style="flex:1">Tout éteindre</button></div>
           </div>
         </section>
@@ -1430,6 +1433,11 @@ function renderPupitre(){
   const m = selM();
   $('#pupEmpty').hidden = !!m; $('#pup').hidden = !m;
   $('#gDraft').style.width = cfg.global.draft + '%';
+  { const G = cfg.global, pc = G.veilPct||0, lv = Math.round(pc/25);
+    if(document.activeElement !== $('#inVeil')) $('#inVeil').value = pc; $('#oVeil').textContent = pc + ' %';
+    $('#veilTxt').textContent = 'Visibilité : ' + (pc ? VEIL_NAMES[Math.max(1, lv)] : 'normale') + (pc ? (G.veilStrat ? ', fumée plus épaisse en partie haute' : ', fumée homogène') : '') + '. Au casque : bouton B ou Y ajoute 25 %.';
+    $('#bStrat').textContent = G.veilStrat ? 'Stratifiée (partie haute)' : 'Homogène';
+    $('#bVeilDark').textContent = G.veilDark > 50 ? 'Fumée noire' : 'Fumée grise'; }
   if(m){
     const p = m.p;
     $('#pName').textContent = m.name;
@@ -1465,6 +1473,7 @@ $('#bDel').onclick = e => {
   if(Date.now() - delArm > 3000){ delArm = Date.now(); e.target.textContent = 'Confirmer'; setTimeout(()=>{ e.target.textContent='Supprimer'; }, 3000); return; }
   cfg.modules = cfg.modules.filter(x => x.id !== m.id); dropRT(m.id); selId = null; e.target.textContent = 'Supprimer'; changed();
 };
+$('#inVeil').oninput = e => { cfg.global.veilPct = +e.target.value; changed(); };
 $('#inDraft').oninput = e => { cfg.global.draft = +e.target.value; changed(); };
 $('#inWind').oninput = e => { cfg.global.wind = +e.target.value; changed(); };
 
@@ -1498,6 +1507,8 @@ document.querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
     case 'wind-r': G.wind = Math.min(100, Math.max(0, G.wind) + 35); break;
     case 'wind-0': G.wind = 0; break;
     case 'all-show': cfg.modules.forEach(m => m.visible = true); break;
+    case 'veil-strat': G.veilStrat = !G.veilStrat; break;
+    case 'veil-dark': G.veilDark = G.veilDark > 50 ? 25 : 85; break;
     case 'all-out': cfg.modules.forEach(m => { m.p.fire = 0; m.p.smoke = 0; m.p.pulse = 0; }); break;
   }
   changed();
@@ -1549,7 +1560,8 @@ $('#bClear').onclick = e => {
   for(const id of [...RT.keys()]) dropRT(id); cfg.modules = []; selId = null; e.target.textContent = 'Tout retirer'; changed();
 };
 function normalize(j){
-  j.global = {draft:50, wind:0, time:'jour', ...(j.global||{})};
+  j.global = {draft:50, wind:0, time:'jour', veilPct:0, veilStrat:true, veilDark:60, ...(j.global||{})};
+  if(j.global.veil != null && j.global.veilPct === 0) j.global.veilPct = j.global.veil*25; delete j.global.veil;
   j.modules = j.modules.map(m => ({id:m.id||uid(), type:m.type||'', name:m.name||'Vignette', mode:MODES[m.mode]?m.mode:'fenetre', visible:m.visible!==false, rect:m.rect||{u:.45,v:.45,w:.05,h:.08}, xr:m.xr||null, p:{...BASE, ...(m.p||{})}}));
   return j;
 }
@@ -1705,7 +1717,89 @@ function setupControllers(){
 }
 const ray = new THREE.Raycaster();
 function controllerRay(c){ const m = c.matrixWorld; const o = new V3().setFromMatrixPosition(m); const d = new V3(0,0,-1).transformDirection(m); return {o, d}; }
+/* -- menu flottant (mains ou manettes) : on vise un bouton et on pince / appuie sur la gâchette -- */
+const HM_BTNS = [
+  ['near', 'Plus près'], ['far', 'Plus loin'],
+  ['small', 'Plus petite'], ['big', 'Plus grande'],
+  ['veil-', 'Enfumage −'], ['veil+', 'Enfumage +'],
+  ['next', 'Vignette suivante'], ['drop', 'Poser ici'],
+];
+const handMenu = new THREE.Group(); handMenu.visible = false; scene.add(handMenu);
+const hmButtons = [];
+function labelTex(text, sub, hi){
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 192; const g = cv.getContext('2d');
+  g.fillStyle = hi ? '#f3b61f' : 'rgba(30,36,43,0.96)'; g.beginPath(); g.roundRect(6,6,500,180,30); g.fill();
+  g.strokeStyle = hi ? '#f3b61f' : 'rgba(255,255,255,0.25)'; g.lineWidth = 4; g.stroke();
+  g.fillStyle = hi ? '#1b1504' : '#ffffff'; g.font = '600 ' + (text.length > 14 ? 50 : 60) + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, sub ? 80 : 96);
+  if(sub){ g.font = '40px system-ui, sans-serif'; g.fillStyle = hi ? '#1b1504' : '#aab4be'; g.fillText(sub, 256, 145); }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+(function buildHandMenu(){
+  const bw = 0.15, bh = 0.056, gap = 0.012;
+  const title = new THREE.Mesh(new THREE.PlaneGeometry(bw*2+gap, 0.04), new THREE.MeshBasicMaterial({map:titleTex('Feu en façade'), transparent:true, depthTest:false}));
+  title.position.set(0, (bh+gap)*2 + 0.01, 0); title.renderOrder = 60; handMenu.add(title); handMenu.userData.title = title;
+  HM_BTNS.forEach(([k, label], i) => {
+    const col = i % 2, row = Math.floor(i / 2);
+    const mat = new THREE.MeshBasicMaterial({map:labelTex(label), transparent:true, depthTest:false});
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), mat);
+    m.position.set((col ? 1 : -1)*(bw+gap)/2, (1.5 - row)*(bh+gap), 0); m.renderOrder = 60;
+    m.userData = {k, label, tex:[mat.map, labelTex(label, null, true)], hi:false};
+    handMenu.add(m); hmButtons.push(m);
+  });
+})();
+function titleTex(text){
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 128; const g = cv.getContext('2d');
+  g.fillStyle = 'rgba(14,18,22,0.92)'; g.beginPath(); g.roundRect(4,4,1016,120,28); g.fill();
+  g.fillStyle = '#f3b61f'; g.font = '600 56px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 512, 66, 980);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function showHandMenu(on){ handMenu.visible = on; if(on) placeHandMenu(true); }
+const hmTarget = new V3();
+function placeHandMenu(snap){
+  // le menu suit la tête en douceur : en bas à gauche du champ de vision, à portée de main
+  const c = xrCam(); const pos = new V3().setFromMatrixPosition(c.matrixWorld);
+  const fwd = new V3(0,0,-1).transformDirection(c.matrixWorld); fwd.y = 0; if(fwd.lengthSq() < 1e-4) fwd.set(0,0,-1); fwd.normalize();
+  const left = new V3(-fwd.z, 0, fwd.x).multiplyScalar(-1);
+  hmTarget.copy(pos).addScaledVector(fwd, 0.55).addScaledVector(left, 0.22); hmTarget.y = pos.y - 0.28;
+  const far = handMenu.position.distanceTo(hmTarget) > 0.45;
+  if(snap || far) handMenu.userData.moving = true;
+  if(handMenu.userData.moving){ handMenu.position.lerp(hmTarget, snap ? 1 : 0.08); if(handMenu.position.distanceTo(hmTarget) < 0.02) handMenu.userData.moving = false; }
+  handMenu.lookAt(pos.x, handMenu.position.y + 0.15, pos.z);
+}
+function hmHit(c){
+  if(!handMenu.visible) return null;
+  const {o, d} = controllerRay(c); ray.set(o, d);
+  const hits = ray.intersectObjects(hmButtons, false);
+  return hits.length ? hits[0].object : null;
+}
+function hmFrame(){
+  if(!handMenu.visible) return;
+  placeHandMenu(false);
+  const hot = new Set(); for(const c of controllers){ const b = hmHit(c); if(b) hot.add(b); }
+  for(const b of hmButtons){ const h = hot.has(b); if(h !== b.userData.hi){ b.userData.hi = h; b.material.map = b.userData.tex[h ? 1 : 0]; b.material.needsUpdate = true; } }
+  const tgt = carry || (selM() && selM().xr ? selM() : null);
+  const sub = carry ? 'Placement : ' + carry.name : tgt ? 'Sélection : ' + tgt.name : `${cfg.modules.filter(m=>!m.xr).length} vignette(s) à poser`;
+  if(handMenu.userData.sub !== sub){ handMenu.userData.sub = sub; const t = handMenu.userData.title; t.material.map.dispose(); t.material.map = titleTex(sub.slice(0, 40)); t.material.needsUpdate = true; }
+}
+function hmAction(k){
+  const tgt = carry || (selM() && selM().xr ? selM() : null);
+  const G = cfg.global;
+  if(k==='veil+'){ G.veilPct = Math.min(100, (G.veilPct||0) + 10); changed(); return; }
+  if(k==='veil-'){ G.veilPct = Math.max(0, (G.veilPct||0) - 10); changed(); return; }
+  if(k==='next'){ const n = cfg.modules.find(m => !m.xr); if(!n){ return; } carry = n; carry._ctrl = controllers.find(c => c.userData.src) || controllers[1]; const [w,h] = MODE_SIZE[n.mode]; n.xr = {p:[0,0,0], yaw:0, w, h}; select(n.id); xrHintUpdate(); return; }
+  if(k==='drop'){ if(carry){ carry = null; changed(); xrHintUpdate(); } return; }
+  if(!tgt) return;
+  if(k==='big' || k==='small'){ const f = k==='big' ? 1.1 : 1/1.1; tgt.xr.w = clamp(tgt.xr.w*f, 0.2, 40); tgt.xr.h = clamp(tgt.xr.h*f, 0.2, 40); layout(tgt); changed(); return; }
+  if(k==='near' || k==='far'){
+    const f = k==='far' ? 1.15 : 1/1.15;
+    if(carry){ carryDist = clamp(carryDist*f, 1, 80); if(xrPlane){ xrPlane = null; } return; }
+    const camP = new V3().setFromMatrixPosition(xrCam().matrixWorld), p = new V3().fromArray(tgt.xr.p);
+    p.sub(camP).multiplyScalar(f).add(camP); tgt.xr.p = [p.x, p.y, p.z]; layout(tgt); changed();
+  }
+}
+
 function onXRSelect(c){
+  { const b = hmHit(c); if(b){ hmAction(b.userData.k); return; } }
   if(c.userData.src && c.userData.src.targetRayMode === 'screen') return;   // sur téléphone : appui long géré par l'interface tactile
   if(carry){ carry = null; changed(); xrHintUpdate(); return; }
   // viser une vignette déjà posée
@@ -1943,17 +2037,18 @@ async function startXR(){
   try{
     const xrui = $('#xrui');
     let session;
-    try{ session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['local-floor','dom-overlay','hit-test'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local-floor'); }
-    catch(e){ session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['dom-overlay','hit-test'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local'); }
+    try{ session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['local-floor','dom-overlay','hit-test','hand-tracking'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local-floor'); floorLocal = true; }
+    catch(e){ floorLocal = false; session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['dom-overlay','hit-test','hand-tracking'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local'); }
     await renderer.xr.setSession(session);
     xrPlane = null; xrHitSrc = null; xrHit = null; xrHitDist = null;
     if(session.domOverlayState){ xrui.hidden = false; xrUIRender(); }
     try{ const vs = await session.requestReferenceSpace('viewer'); xrHitSrc = await session.requestHitTestSource({space:vs}); }catch(e){ xrHitSrc = null; }
     xrActive = true; renderer.setClearColor(0x000000, 0); photoMesh.visible = false;
     if(!controllers.length) setupControllers();
+    if(!session.domOverlayState) showHandMenu(true);
     layoutAll(); xrHintUpdate(); renderAll();
     session.addEventListener('end', () => {
-      reticle.visible = false; $('#xrui').hidden = true; xrCloseMenu(); cal = null; $('#xrCalBox').hidden = true; xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
+      reticle.visible = false; handMenu.visible = false; $('#xrui').hidden = true; xrCloseMenu(); cal = null; $('#xrCalBox').hidden = true; xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
       xrActive = false; carry = null; renderer.setClearColor(0x07090b, 1); photoMesh.visible = true;
       layoutAll(); resize(); renderAll();
     });
@@ -1967,6 +2062,91 @@ $('#bXR').onclick = startXR;
   if(ok){ b.classList.add('primary'); b.textContent = 'Entrer en réalité augmentée'; }
   else { b.title = 'Disponible dans le navigateur du Meta Quest 3 ou Chrome Android, sur la version hébergée'; b.style.opacity = .6; }
 })();
+
+/* ------------------------------------------------------------------ */
+/* Enfumage : voile de fumée autour de l'observateur, en 3 couches à des profondeurs différentes */
+/* ------------------------------------------------------------------ */
+const VEIL_NAMES = ['normale', 'environ 20 m', 'environ 8 m', 'environ 3 m', 'environ 1 m'];
+const interp = (arr, L) => { const i = Math.min(arr.length-2, Math.floor(L)); return lerp(arr[i], arr[i+1], clamp(L - i, 0, 1)); };
+const veilL = () => clamp((cfg.global.veilPct||0)/25, 0, 4);
+const VEIL_D = [0, 0.32, 0.58, 0.82, 0.97];
+const VEIL_VS = `varying vec3 vDir; void main(){ vec4 w = modelMatrix*vec4(position,1.0); vDir = normalize(w.xyz - cameraPosition); gl_Position = projectionMatrix*viewMatrix*w; }`;
+const VEIL_FS = `
+uniform float uA; uniform float uT; uniform float uScale; uniform float uStrat; uniform vec3 uCol; uniform float uSeed;
+varying vec3 vDir;
+float h3(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7)))*43758.5453); }
+float n3(vec3 p){ vec3 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),f.x), mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),f.x), f.y),
+             mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),f.x), mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),f.x), f.y), f.z); }
+void main(){
+  vec3 p = vDir*uScale + vec3(uT*0.07, -uT*0.035, uT*0.05) + uSeed;
+  float f = n3(p)*0.5 + n3(p*2.1)*0.3 + n3(p*4.3)*0.2;
+  float strat = mix(1.0, smoothstep(-0.8, 0.5, vDir.y)*0.65 + 0.35, uStrat);
+  float a = clamp(uA * (0.55 + 0.9*(f-0.5) + 0.45) * strat, 0.0, 1.0);
+  vec3 c = uCol * (0.85 + 0.3*f);
+  gl_FragColor = vec4(c*a, a);
+}`;
+const veil = new THREE.Group(); scene.add(veil);
+const veilLayers = [[0.5, 2.2, 1], [1.4, 3.5, 2], [3.2, 5.5, 3]].map(([r, sc, seed]) => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 20), new THREE.ShaderMaterial({
+    uniforms:{uA:{value:0}, uT:{value:0}, uScale:{value:sc}, uStrat:{value:1}, uCol:{value:new THREE.Color(0.2,0.2,0.2)}, uSeed:{value:seed*7.3}},
+    vertexShader:VEIL_VS, fragmentShader:VEIL_FS, side:THREE.BackSide, transparent:true, depthWrite:false, depthTest:false,
+    premultipliedAlpha:true, blending:THREE.CustomBlending, blendSrc:THREE.OneFactor, blendDst:THREE.OneMinusSrcAlphaFactor}));
+  m.renderOrder = 40 - seed; m.frustumCulled = false; veil.add(m); return m;
+});
+let veilCur = 0;
+function veilFrame(dt, t){
+  const G = cfg.global, target = interp(VEIL_D, veilL());
+  veilCur += (target - veilCur) * (1 - Math.exp(-dt/2.5));    // l'enfumage arrive progressivement
+  veil.visible = veilCur > 0.005;
+  if(!veil.visible) return;
+  veil.position.copy(camWorld);
+  const A = AMB[G.time] || AMB.jour, dk = (G.veilDark ?? 60)/100;
+  const g = lerp(0.62, 0.07, dk) * (0.35 + 0.65*A.amb);
+  const per = 1 - Math.pow(1 - veilCur, 1/3);
+  const perV = xrActive ? per*0.6 : per;
+  for(const m of veilLayers){ const u = m.material.uniforms; u.uA.value = perV; u.uT.value = t; u.uStrat.value = G.veilStrat ? 1 : 0; u.uCol.value.setRGB(g, g, g*1.02); }
+}
+/* fumée en volume dans la pièce (réalité augmentée) : particules fixées dans l'espace autour du stagiaire,
+   plus denses près du plafond ; en marchant, on les traverse et la visibilité baisse avec la distance */
+const ROOM = new Pool(1800, TEX.smoke, false, 4);
+const ROOM_N = [0, 450, 900, 1350, 1800], ROOM_A = [0, 0.09, 0.15, 0.22, 0.3], ROOM_LOW = [3, 1.8, 1.25, 0.7, 0.05];
+let floorLocal = true;
+function roomFrame(dt, t){
+  const G = cfg.global, lv = veilL(), L = ROOM.L;
+  if(!xrActive){ if(L.length){ L.length = 0; ROOM.flush(false); } return; }
+  const target = Math.round(interp(ROOM_N, lv) * (qualityPref==='haute' ? 1 : qualityPref==='standard' ? 0.8 : 0.6));
+  const floorY = floorLocal ? 0 : camWorld.y - 1.6, ceil = floorY + 2.9;
+  const low = floorY + (G.veilStrat ? interp(ROOM_LOW, lv) : 0.05);
+  const spawn = () => { const y = lerp(low, ceil, Math.pow(rnd(), 0.6)); return {x:camWorld.x + (rnd()-.5)*10, y, z:camWorld.z + (rnd()-.5)*10, vx:(rnd()-.5)*0.08, vz:(rnd()-.5)*0.08, s:1.2+rnd()*1.6, r:rnd()*6.28, vr:(rnd()-.5)*0.05, v:(rnd()*4)|0, a:0, fa:0, cr:0, cg:0, cb:0}; };
+  while(L.length < target) L.push(spawn());
+  const A = AMB[G.time] || AMB.jour, dk = (G.veilDark ?? 60)/100, g = lerp(0.6, 0.07, dk) * (0.35 + 0.65*A.amb);
+  const aT = interp(ROOM_A, lv);
+  for(let i=L.length-1;i>=0;i--){
+    const p = L[i];
+    p.x += p.vx*dt; p.z += p.vz*dt; p.y += Math.sin(t*0.3 + p.v*1.7 + p.x)*0.02*dt; p.r += p.vr*dt;
+    // la fumée reste répartie autour du stagiaire : ce qui sort de la zone revient de l'autre côté
+    if(p.x - camWorld.x > 5) p.x -= 10; else if(camWorld.x - p.x > 5) p.x += 10;
+    if(p.z - camWorld.z > 5) p.z -= 10; else if(camWorld.z - p.z > 5) p.z += 10;
+    const want = (i < target && p.y >= low - 0.3) ? aT : 0;
+    p.fa += (want - p.fa) * (1 - Math.exp(-dt/2));
+    if(i >= target && p.fa < 0.004){ L[i] = L[L.length-1]; L.pop(); continue; }
+    if(p.y < low - 0.3 && p.fa < 0.004){ Object.assign(p, spawn()); }
+    // près des yeux, la particule s'estompe pour éviter l'effet de « tache » devant le visage
+    const dx = p.x-camWorld.x, dy = p.y-camWorld.y, dz = p.z-camWorld.z, dist = Math.sqrt(dx*dx+dy*dy+dz*dz);
+    p.a = p.fa * clamp((dist - 0.25)/0.8, 0, 1);
+    p.cr = p.cg = g; p.cb = g*1.02;
+  }
+  ROOM.flush(true);
+}
+let veilBtnPrev = false;
+function veilButtons(){
+  // manettes Quest : B ou Y (bouton 5) fait monter l'enfumage d'un palier, puis revient à zéro
+  let pressed = false;
+  for(const c of controllers){ const gp = c.userData.src && c.userData.src.gamepad; if(gp && gp.buttons[5] && gp.buttons[5].pressed) pressed = true; }
+  if(pressed && !veilBtnPrev){ const v = (cfg.global.veilPct||0); cfg.global.veilPct = v >= 100 ? 0 : Math.min(100, Math.floor(v/25)*25 + 25); changed(); }
+  veilBtnPrev = pressed;
+}
 
 /* ------------------------------------------------------------------ */
 /* Son : synthèse en temps réel, spatialisé par fenêtre                */
@@ -2078,7 +2258,7 @@ const clock = new THREE.Clock();
 let T = 0;
 renderer.setAnimationLoop((time, frame) => {
   const dt = Math.min(0.05, clock.getDelta()); T += dt;
-  if(xrActive){ xrFrame(dt); xrHitFrame(frame); xrDiagFrame(frame); }
+  if(xrActive){ xrFrame(dt); xrHitFrame(frame); xrDiagFrame(frame); hmFrame(); }
   for(const m of cfg.modules){ const R = RT.get(m.id); if(!R) continue; stepModule(m, R, dt, T); emitModule(m, R, dt, T); }
   camera.getWorldPosition(camWorld); camera.getWorldDirection(camDir);
   if(renderer.xr.isPresenting){
@@ -2090,6 +2270,7 @@ renderer.setAnimationLoop((time, frame) => {
     SMOKE.mat.uniforms.uHalfH.value = FIRE.mat.uniforms.uHalfH.value = hh;
   }
   updateParticles(dt, T);
+  veilFrame(dt, T); roomFrame(dt, T); if(xrActive) veilButtons();
   audioFrame(T);
   renderer.render(scene, camera);
 });

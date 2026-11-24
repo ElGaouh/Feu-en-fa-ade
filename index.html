@@ -1723,6 +1723,7 @@ const HM_BTNS = [
   ['small', 'Plus petite'], ['big', 'Plus grande'],
   ['veil-', 'Enfumage −'], ['veil+', 'Enfumage +'],
   ['next', 'Vignette suivante'], ['drop', 'Poser ici'],
+  ['cal', 'Caler la façade'], ['hint', 'Aide on/off'],
 ];
 const handMenu = new THREE.Group(); handMenu.visible = false; scene.add(handMenu);
 const hmButtons = [];
@@ -1778,7 +1779,7 @@ function hmFrame(){
   const hot = new Set(); for(const c of controllers){ const b = hmHit(c); if(b) hot.add(b); }
   for(const b of hmButtons){ const h = hot.has(b); if(h !== b.userData.hi){ b.userData.hi = h; b.material.map = b.userData.tex[h ? 1 : 0]; b.material.needsUpdate = true; } }
   const tgt = carry || (selM() && selM().xr ? selM() : null);
-  const sub = carry ? 'Placement : ' + carry.name : tgt ? 'Sélection : ' + tgt.name : `${cfg.modules.filter(m=>!m.xr).length} vignette(s) à poser`;
+  const sub = qcal ? (qcal.step === 1 ? 'Calage 1/2 : visez un coin de fenêtre, pincez' : 'Calage 2/2 : décalez-vous, visez le même point') : carry ? 'Placement : ' + carry.name : tgt ? 'Sélection : ' + tgt.name : `${cfg.modules.filter(m=>!m.xr).length} vignette(s) à poser`;
   if(handMenu.userData.sub !== sub){ handMenu.userData.sub = sub; const t = handMenu.userData.title; t.material.map.dispose(); t.material.map = titleTex(sub.slice(0, 40)); t.material.needsUpdate = true; }
 }
 function hmAction(k){
@@ -1787,6 +1788,8 @@ function hmAction(k){
   if(k==='veil+'){ G.veilPct = Math.min(100, (G.veilPct||0) + 10); changed(); return; }
   if(k==='veil-'){ G.veilPct = Math.max(0, (G.veilPct||0) - 10); changed(); return; }
   if(k==='next'){ const n = cfg.modules.find(m => !m.xr); if(!n){ return; } carry = n; carry._ctrl = controllers.find(c => c.userData.src) || controllers[1]; const [w,h] = MODE_SIZE[n.mode]; n.xr = {p:[0,0,0], yaw:0, w, h}; select(n.id); xrHintUpdate(); return; }
+  if(k==='cal'){ carry = null; qcal = {step:1}; return; }
+  if(k==='hint'){ if(xrHint) xrHint.visible = !xrHint.visible; return; }
   if(k==='drop'){ if(carry){ carry = null; changed(); xrHintUpdate(); } return; }
   if(!tgt) return;
   if(k==='big' || k==='small'){ const f = k==='big' ? 1.1 : 1/1.1; tgt.xr.w = clamp(tgt.xr.w*f, 0.2, 40); tgt.xr.h = clamp(tgt.xr.h*f, 0.2, 40); layout(tgt); changed(); return; }
@@ -1800,6 +1803,7 @@ function hmAction(k){
 
 function onXRSelect(c){
   { const b = hmHit(c); if(b){ hmAction(b.userData.k); return; } }
+  if(qcal){ questCalStep(c); return; }
   if(c.userData.src && c.userData.src.targetRayMode === 'screen') return;   // sur téléphone : appui long géré par l'interface tactile
   if(carry){ carry = null; changed(); xrHintUpdate(); return; }
   // viser une vignette déjà posée
@@ -1843,7 +1847,40 @@ function xrFrame(dt){
 }
 /* -- téléphone / tablette : appui long pour poser, régler ou supprimer, sur un plan de façade commun -- */
 let xrPlane = null, xrHitSrc = null, xrHitDist = null, xrDistManual = 12, xrAdj = null;
-function setPlane(p, yaw){ xrPlane = {p:p.clone(), yaw, n:new V3(Math.sin(yaw), 0, Math.cos(yaw))}; }
+function setPlane(p, yaw){ xrPlane = {p:p.clone(), yaw, n:new V3(Math.sin(yaw), 0, Math.cos(yaw))}; anchorPlane(p); }
+/* ancre WebXR sur la façade : le casque corrige la dérive de son suivi, et on reporte cette correction sur toutes les vignettes */
+let planeAnchor = null, lastXRFrame = null;
+function anchorPlane(p){
+  planeAnchor = null;
+  const f = lastXRFrame; if(!f || !f.createAnchor) return;
+  try{
+    f.createAnchor(new XRRigidTransform({x:p.x, y:p.y, z:p.z}), renderer.xr.getReferenceSpace())
+      .then(a => { planeAnchor = {a, last:p.clone()}; }).catch(() => {});
+  }catch(e){}
+}
+function anchorFrame(frame){
+  lastXRFrame = frame;
+  if(!planeAnchor || !frame || !frame.trackedAnchors || !frame.trackedAnchors.has(planeAnchor.a)) return;
+  const pose = frame.getPose(planeAnchor.a.anchorSpace, renderer.xr.getReferenceSpace()); if(!pose) return;
+  const t = pose.transform.position, cur = new V3(t.x, t.y, t.z), d = cur.clone().sub(planeAnchor.last);
+  if(d.lengthSq() < 0.00002) return;
+  planeAnchor.last.copy(cur);
+  if(xrPlane) xrPlane.p.add(d);
+  for(const m of cfg.modules){ if(!m.xr || m === carry) continue; m.xr.p = [m.xr.p[0]+d.x, m.xr.p[1]+d.y, m.xr.p[2]+d.z]; layout(m); }
+}
+/* calage par deux visées au casque (rayon de la main ou de la manette) */
+let qcal = null;
+function questCalStep(c){
+  const r = controllerRay(c);
+  if(qcal.step === 1){ qcal.a = r; qcal.step = 2; return; }
+  const res = closestPoint(qcal.a, r);
+  if(!res || res.gap < 1 || res.angle < 0.02){ qcal = {step:1}; if(xrHint){ xrHint.visible = true; xrHint.userData.draw(['Calage à refaire', 'Décalez-vous d\u2019au moins 2 m', 'entre les deux visées']); } return; }
+  const hz = new V3(qcal.a.d.x, 0, qcal.a.d.z).normalize(), yaw = Math.atan2(-hz.x, -hz.z), a = qcal.a;
+  setPlane(res.p, yaw);
+  for(const m of cfg.modules){ if(!m.xr) continue; const d = new V3().fromArray(m.xr.p).sub(a.o).normalize(); const hit = rayPlane(a.o, d, xrPlane); if(hit){ m.xr.p = [hit.x, hit.y, hit.z]; m.xr.yaw = yaw; layout(m); } }
+  qcal = null; changed();
+  if(xrHint){ xrHint.visible = true; xrHint.userData.draw([`Façade calée à ${a.o.distanceTo(res.p).toFixed(1)} m`, 'Les vignettes sont reportées dessus', 'Gâchette ou pincer : poser la suivante']); }
+}
 function rayPlane(o, d, pl){ const den = d.dot(pl.n); if(Math.abs(den) < 1e-4) return null; const t = pl.p.clone().sub(o).dot(pl.n)/den; return t > 0.3 ? o.clone().addScaledVector(d, t) : null; }
 function xrCam(){ const cam = renderer.xr.getCamera(); return (cam.cameras && cam.cameras[0]) || cam; }
 function touchRay(x, y){
@@ -2037,8 +2074,8 @@ async function startXR(){
   try{
     const xrui = $('#xrui');
     let session;
-    try{ session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['local-floor','dom-overlay','hit-test','hand-tracking'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local-floor'); floorLocal = true; }
-    catch(e){ floorLocal = false; session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['dom-overlay','hit-test','hand-tracking'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local'); }
+    try{ session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['local-floor','dom-overlay','hit-test','hand-tracking','anchors'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local-floor'); floorLocal = true; }
+    catch(e){ floorLocal = false; session = await navigator.xr.requestSession('immersive-ar', {optionalFeatures:['dom-overlay','hit-test','hand-tracking','anchors'], domOverlay:{root:xrui}}); renderer.xr.setReferenceSpaceType('local'); }
     await renderer.xr.setSession(session);
     xrPlane = null; xrHitSrc = null; xrHit = null; xrHitDist = null;
     if(session.domOverlayState){ xrui.hidden = false; xrUIRender(); }
@@ -2048,7 +2085,7 @@ async function startXR(){
     if(!session.domOverlayState) showHandMenu(true);
     layoutAll(); xrHintUpdate(); renderAll();
     session.addEventListener('end', () => {
-      reticle.visible = false; handMenu.visible = false; $('#xrui').hidden = true; xrCloseMenu(); cal = null; $('#xrCalBox').hidden = true; xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
+      reticle.visible = false; handMenu.visible = false; qcal = null; planeAnchor = null; lastXRFrame = null; $('#xrui').hidden = true; xrCloseMenu(); cal = null; $('#xrCalBox').hidden = true; xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
       xrActive = false; carry = null; renderer.setClearColor(0x07090b, 1); photoMesh.visible = true;
       layoutAll(); resize(); renderAll();
     });
@@ -2258,7 +2295,7 @@ const clock = new THREE.Clock();
 let T = 0;
 renderer.setAnimationLoop((time, frame) => {
   const dt = Math.min(0.05, clock.getDelta()); T += dt;
-  if(xrActive){ xrFrame(dt); xrHitFrame(frame); xrDiagFrame(frame); hmFrame(); }
+  if(xrActive){ anchorFrame(frame); xrFrame(dt); xrHitFrame(frame); xrDiagFrame(frame); hmFrame(); }
   for(const m of cfg.modules){ const R = RT.get(m.id); if(!R) continue; stepModule(m, R, dt, T); emitModule(m, R, dt, T); }
   camera.getWorldPosition(camWorld); camera.getWorldDirection(camDir);
   if(renderer.xr.isPresenting){

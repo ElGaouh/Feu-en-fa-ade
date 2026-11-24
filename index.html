@@ -1747,7 +1747,25 @@ function labelTex(text, sub, hi){
     m.userData = {k, label, tex:[mat.map, labelTex(label, null, true)], hi:false};
     handMenu.add(m); hmButtons.push(m);
   });
+  // bouton pleine largeur, en rouge, pour quitter la réalité augmentée (deux appuis pour éviter une sortie accidentelle)
+  const ew = bw*2 + gap, eMat = new THREE.MeshBasicMaterial({map:exitTex('Quitter la réalité augmentée'), transparent:true, depthTest:false});
+  const e = new THREE.Mesh(new THREE.PlaneGeometry(ew, bh), eMat);
+  e.position.set(0, (1.5 - Math.ceil(HM_BTNS.length/2))*(bh+gap) - 0.008, 0); e.renderOrder = 60;
+  e.userData = {k:'exit', label:'Quitter', tex:[eMat.map, exitTex('Quitter la réalité augmentée', true)], conf:[exitTex('Appuyez encore pour quitter'), exitTex('Appuyez encore pour quitter', true)], hi:false};
+  handMenu.add(e); hmButtons.push(e); handMenu.userData.exitBtn = e;
 })();
+function exitTex(text, hi){
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 184; const g = cv.getContext('2d');
+  g.fillStyle = hi ? '#ff6b5a' : 'rgba(150,32,24,0.96)'; g.beginPath(); g.roundRect(6,6,1012,172,30); g.fill();
+  g.strokeStyle = hi ? '#ffd2cc' : 'rgba(255,255,255,0.3)'; g.lineWidth = 4; g.stroke();
+  g.fillStyle = '#ffffff'; g.font = '600 60px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 512, 94, 960);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+let exitArm = 0;
+function setExitArm(on){ const e = handMenu.userData.exitBtn; if(!e) return; exitArm = on ? performance.now() : 0;
+  if(on && !e.userData.base) { e.userData.base = e.userData.tex; e.userData.tex = e.userData.conf; }
+  if(!on && e.userData.base){ e.userData.tex = e.userData.base; e.userData.base = null; }
+  e.material.map = e.userData.tex[e.userData.hi ? 1 : 0]; e.material.needsUpdate = true; }
 function titleTex(text){
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 128; const g = cv.getContext('2d');
   g.fillStyle = 'rgba(14,18,22,0.92)'; g.beginPath(); g.roundRect(4,4,1016,120,28); g.fill();
@@ -1761,7 +1779,7 @@ function placeHandMenu(snap){
   const c = xrCam(); const pos = new V3().setFromMatrixPosition(c.matrixWorld);
   const fwd = new V3(0,0,-1).transformDirection(c.matrixWorld); fwd.y = 0; if(fwd.lengthSq() < 1e-4) fwd.set(0,0,-1); fwd.normalize();
   const left = new V3(-fwd.z, 0, fwd.x).multiplyScalar(-1);
-  hmTarget.copy(pos).addScaledVector(fwd, 0.55).addScaledVector(left, 0.22); hmTarget.y = pos.y - 0.28;
+  hmTarget.copy(pos).addScaledVector(fwd, 0.55).addScaledVector(left, 0.22); hmTarget.y = pos.y - 0.24;
   const far = handMenu.position.distanceTo(hmTarget) > 0.45;
   if(snap || far) handMenu.userData.moving = true;
   if(handMenu.userData.moving){ handMenu.position.lerp(hmTarget, snap ? 1 : 0.08); if(handMenu.position.distanceTo(hmTarget) < 0.02) handMenu.userData.moving = false; }
@@ -1776,6 +1794,7 @@ function hmHit(c){
 function hmFrame(){
   if(!handMenu.visible) return;
   placeHandMenu(false);
+  if(exitArm && performance.now() - exitArm > 4000) setExitArm(false);
   const hot = new Set(); for(const c of controllers){ const b = hmHit(c); if(b) hot.add(b); }
   for(const b of hmButtons){ const h = hot.has(b); if(h !== b.userData.hi){ b.userData.hi = h; b.material.map = b.userData.tex[h ? 1 : 0]; b.material.needsUpdate = true; } }
   const tgt = carry || (selM() && selM().xr ? selM() : null);
@@ -1788,6 +1807,8 @@ function hmAction(k){
   if(k==='veil+'){ G.veilPct = Math.min(100, (G.veilPct||0) + 10); changed(); return; }
   if(k==='veil-'){ G.veilPct = Math.max(0, (G.veilPct||0) - 10); changed(); return; }
   if(k==='next'){ const n = cfg.modules.find(m => !m.xr); if(!n){ return; } carry = n; carry._ctrl = controllers.find(c => c.userData.src) || controllers[1]; const [w,h] = MODE_SIZE[n.mode]; n.xr = {p:[0,0,0], yaw:0, w, h}; select(n.id); xrHintUpdate(); return; }
+  if(k==='exit'){ if(exitArm){ setExitArm(false); renderer.xr.getSession()?.end(); } else setExitArm(true); return; }
+  if(exitArm) setExitArm(false);
   if(k==='cal'){ carry = null; qcal = {step:1}; return; }
   if(k==='hint'){ if(xrHint) xrHint.visible = !xrHint.visible; return; }
   if(k==='drop'){ if(carry){ carry = null; changed(); xrHintUpdate(); } return; }
@@ -2085,7 +2106,7 @@ async function startXR(){
     if(!session.domOverlayState) showHandMenu(true);
     layoutAll(); xrHintUpdate(); renderAll();
     session.addEventListener('end', () => {
-      reticle.visible = false; handMenu.visible = false; qcal = null; planeAnchor = null; lastXRFrame = null; $('#xrui').hidden = true; xrCloseMenu(); cal = null; $('#xrCalBox').hidden = true; xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
+      reticle.visible = false; handMenu.visible = false; setExitArm(false); qcal = null; planeAnchor = null; lastXRFrame = null; $('#xrui').hidden = true; xrCloseMenu(); cal = null; $('#xrCalBox').hidden = true; xrAdj = null; $('#xrAdj').hidden = true; xrHitSrc = null;
       xrActive = false; carry = null; renderer.setClearColor(0x07090b, 1); photoMesh.visible = true;
       layoutAll(); resize(); renderAll();
     });
